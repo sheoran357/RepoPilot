@@ -1,13 +1,24 @@
-import { Request, Response } from "express";
+import { Response } from "express";
+
+import {
+    AuthenticatedRequest
+} from "../middleware/authMiddleware.js";
+
 import Task from "../models/Task.js";
 
 export const createTask = async (
-    req: Request,
+    req: AuthenticatedRequest,
     res: Response
 ) => {
     try {
+
+        if (!req.userId) {
+            return res.status(401).json({
+                message: "User is not authenticated"
+            });
+        }
+
         const {
-            userId,
             repositoryId,
             issueNumber,
             title,
@@ -15,7 +26,6 @@ export const createTask = async (
         } = req.body;
 
         if (
-            !userId ||
             !repositoryId ||
             !title ||
             !description
@@ -26,21 +36,26 @@ export const createTask = async (
         }
 
         const task = await Task.create({
-            userId,
+            userId: req.userId,
             repositoryId,
             issueNumber,
             title,
             description
         });
 
-        res.status(201).json({
+        return res.status(201).json({
             message: "Task created successfully",
             task
         });
-    } catch (error) {
-        console.error("Error creating task:", error);
 
-        res.status(500).json({
+    } catch (error) {
+
+        console.error(
+            "Error creating task:",
+            error
+        );
+
+        return res.status(500).json({
             message: "Failed to create task"
         });
     }

@@ -9,6 +9,28 @@ const githubApi = axios.create({
 });
 
 
+export const searchGithubCode = async (
+    accessToken: string,
+    owner: string,
+    repo: string,
+    searchTerm: string
+) => {
+    const response = await githubApi.get(
+        "/search/code",
+        {
+            headers: {
+                Authorization: `Bearer ${accessToken}`
+            },
+            params: {
+                q: `${searchTerm} repo:${owner}/${repo}`,
+                per_page: 50
+            }
+        }
+    );
+
+    return response.data;
+};
+
 export const getRepositoryContents = async (
     accessToken: string,
     owner: string,
@@ -90,6 +112,24 @@ export const getGithubRepositories = async (
             params: {
                 per_page: 100,
                 sort: "updated"
+            }
+        }
+    );
+
+    return response.data;
+};
+
+export const getRepositoryFile = async (
+    accessToken: string,
+    owner: string,
+    repo: string,
+    path: string
+) => {
+    const response = await githubApi.get(
+        `/repos/${owner}/${repo}/contents/${path}`,
+        {
+            headers: {
+                Authorization: `Bearer ${accessToken}`
             }
         }
     );

@@ -1,8 +1,6 @@
 import { Router } from "express";
 
-import {
-    createTask
-} from "../controllers/taskController.js";
+import { createTask } from "../controllers/taskController.js";
 
 import {
     authenticateUser
