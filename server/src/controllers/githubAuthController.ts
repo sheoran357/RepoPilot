@@ -21,11 +21,11 @@ export const githubLogin = (
             message: "GitHub configuration is missing"
         });
     }
-
-    const githubUrl =
-        `https://github.com/login/oauth/authorize` +
-        `?client_id=${clientId}` +
-        `&redirect_uri=${encodeURIComponent(callbackUrl)}`;
+const githubUrl =
+    `https://github.com/login/oauth/authorize` +
+    `?client_id=${clientId}` +
+    `&redirect_uri=${encodeURIComponent(callbackUrl)}` +
+    `&scope=repo,user:email`;
 
     res.redirect(githubUrl);
 };

@@ -33,7 +33,8 @@ const toolCallSchema = new Schema<IToolCall>(
             type: String,
             enum: [
                 "PENDING",
-                "SUCCESS",
+                "RUNNING",
+                "COMPLETED",
                 "FAILED"
             ],
             default: "PENDING"

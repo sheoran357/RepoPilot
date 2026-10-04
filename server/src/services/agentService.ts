@@ -5,157 +5,121 @@ import Task from "../models/Task.js";
 import Repository from "../models/Repository.js";
 import User from "../models/User.js";
 
+import { Agent } from "../agent/agent.js";
 import {
-    searchCode,
-    getFile
-} from "../tools/githubTool.js";
-
+    runAgentLoop
+} from "../agent/agentLoop.js";
 
 export const startAgentRun = async (
     taskId: string,
     userId: string
 ) => {
-
-    const task = await Task.findById(taskId);
+    const task = await Task.findOne({
+        _id: taskId,
+        userId
+    });
 
     if (!task) {
         throw new Error("Task not found");
     }
 
-    console.log(
-        "Task userId:",
-        task.userId.toString()
-    );
+    const repository =
+        await Repository.findById(
+            task.repositoryId
+        );
 
-    console.log(
-        "JWT userId:",
-        userId
-    );
-
-    if (task.userId.toString() !== userId) {
+    if (!repository) {
         throw new Error(
-            "You are not allowed to run this task"
+            "Repository not found"
         );
     }
 
-    const repository = await Repository.findById(
-        task.repositoryId
-    );
+    const user =
+        await User.findById(userId);
 
-    if (!repository) {
-        throw new Error("Repository not found");
-    }
-
-    const user = await User.findById(
-        task.userId
-    );
-
-    if (!user || !user.githubAccessToken) {
+    if (
+        !user ||
+        !user.githubAccessToken
+    ) {
         throw new Error(
             "GitHub account is not connected"
         );
     }
 
+
     const [owner, repo] =
         repository.fullName.split("/");
 
+    const agentRun =
+        await AgentRun.create({
+            taskId: task._id,
+            status: "RUNNING",
+            startedAt: new Date(),
+            tokensUsed: 0,
+            executionTime: 0
+        });
+
+        
+const state = {
+    taskId: task._id.toString(),
+
+    runId: agentRun._id.toString(),
+
+    goal: `${task.title}
+
+${task.description}`,
+
+    currentStep: 0,
+
+    status: "RUNNING",
+
+    plan: [],
+
+    observations: [],
+
+    filesInspected: [],
+
+    searchResults: [],
+
+    toolHistory: []
+};
+
+    const agent =
+        new Agent(state);
+
     const startTime = Date.now();
 
-    const agentRun = await AgentRun.create({
-        taskId: task._id,
-        status: "RUNNING",
-        startedAt: new Date(),
-        tokensUsed: 0,
-        executionTime: 0
-    });
-
     try {
+        const result =
+            await runAgentLoop(
+                agent,
+                {
+                    accessToken:
+                        user.githubAccessToken,
 
-        // STEP 1
-        // Search the repository using the task title.
-
-        const step1 = await AgentStep.create({
-            runId: agentRun._id,
-            stepNumber: 1,
-            action: "SEARCH_CODE",
-            toolName: "search_code",
-            input: task.title,
-            status: "RUNNING"
-        });
-
-        const searchResults = await searchCode(
-            user.githubAccessToken,
-            owner,
-            repo,
-            task.title
-        );
-
-        await ToolCall.create({
-            runId: agentRun._id,
-            toolName: "search_code",
-            input: JSON.stringify({
-                searchTerm: task.title
-            }),
-            output: JSON.stringify(searchResults),
-            status: "COMPLETED"
-        });
-
-        step1.output =
-            JSON.stringify(searchResults);
-
-        step1.status = "COMPLETED";
-
-        await step1.save();
-
-
-        // STEP 2
-        // Read the first matching file.
-
-        if (searchResults.length > 0) {
-
-            const firstFile =
-                searchResults[0];
-
-            const step2 =
-                await AgentStep.create({
-                    runId: agentRun._id,
-                    stepNumber: 2,
-                    action: "READ_FILE",
-                    toolName: "get_file",
-                    input: firstFile.path,
-                    status: "RUNNING"
-                });
-
-            const file = await getFile(
-                user.githubAccessToken,
-                owner,
-                repo,
-                firstFile.path
+                    owner,
+                    repo
+                }
             );
 
-            await ToolCall.create({
+        /*
+         * Save AgentStep records
+         */
+
+        for (
+            let i = 0;
+            i < result.currentStep;
+            i++
+        ) {
+            await AgentStep.create({
                 runId: agentRun._id,
-                toolName: "get_file",
-                input: JSON.stringify({
-                    path: firstFile.path
-                }),
-                output: JSON.stringify(file),
+                stepNumber: i + 1,
+                action:
+                    result.observations[i] ||
+                    "Agent action",
                 status: "COMPLETED"
             });
-
-            step2.output =
-                JSON.stringify(file);
-
-            step2.status = "COMPLETED";
-
-            await step2.save();
         }
-
-
-        // COMPLETE AGENT RUN
-
-        const executionTime =
-            Date.now() - startTime;
 
         agentRun.status = "COMPLETED";
 
@@ -163,24 +127,19 @@ export const startAgentRun = async (
             new Date();
 
         agentRun.executionTime =
-            executionTime;
+            Date.now() - startTime;
 
         await agentRun.save();
 
-        return agentRun;
-
+        return result;
     } catch (error) {
-
-        const executionTime =
-            Date.now() - startTime;
-
         agentRun.status = "FAILED";
 
         agentRun.completedAt =
             new Date();
 
         agentRun.executionTime =
-            executionTime;
+            Date.now() - startTime;
 
         await agentRun.save();
 
