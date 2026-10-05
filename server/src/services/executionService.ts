@@ -8,6 +8,7 @@ import {
 
 const COMMAND_TIMEOUT = 30_000;
 const MAX_OUTPUT_LENGTH = 20_000;
+const DOCKER_IMAGE = "node:22-alpine";
 
 const allowedCommands = [
     "node --version",
@@ -21,163 +22,212 @@ export const runCommand = async (
     command: string,
     workingDirectory: string
 ) => {
-    const normalizedCommand = command.trim();
+    const normalizedCommand =
+        command.trim();
 
     if (!allowedCommands.includes(normalizedCommand)) {
         throw new Error("Command is not allowed");
     }
 
     const safeWorkingDirectory =
-        validateWorkspace(
-            workingDirectory
-        );
+        validateWorkspace(workingDirectory);
 
-    const execution = await Execution.create({
-        runId,
-        command: normalizedCommand,
-        status: "RUNNING"
-    });
+    const execution =
+        await Execution.create({
+            runId,
+            command: normalizedCommand,
+            status: "RUNNING"
+        });
 
     const startedAt = Date.now();
 
-    return await new Promise((resolve, reject) => {
-        const parts = normalizedCommand.split(/\s+/);
+    return await new Promise(
+        (resolve, reject) => {
+            const parts =
+                normalizedCommand.split(/\s+/);
 
-        const program =
-            process.platform === "win32" && parts[0] === "npm"
-                ? "npm.cmd"
-                : parts[0];
+            const child = spawn(
+                "docker",
+                [
+                    "run",
+                    "--rm",
+                    "--network",
+                    "none",
+                    "--cpus",
+                    "1",
+                    "--memory",
+                    "512m",
+                    "--pids-limit",
+                    "128",
+                    "--read-only",
+                    "--tmpfs",
+                    "/tmp:rw,noexec,nosuid,size=64m",
+                    "-v",
+                        path.resolve(safeWorkingDirectory) + ":/workspace:rw",
+                    "-w",
+                    "/workspace",
+                    DOCKER_IMAGE,
+                    ...parts
+                ],
+                {
+                    shell: false,
+                    windowsHide: true
+                }
+            );
 
-        const args = parts.slice(1);
+            let stdout = "";
+            let stderr = "";
 
-        const child = spawn(
-            program,
-            args,
-            {
-                cwd: path.resolve(
-                    safeWorkingDirectory
-                ),
-                shell: false,
-                windowsHide: true
-            }
-        );
+            const appendOutput = (
+                current: string,
+                value: Buffer
+            ) => {
+                const next =
+                    current + value.toString();
 
-        let stdout = "";
-        let stderr = "";
+                return next.length > MAX_OUTPUT_LENGTH
+                    ? next.slice(0, MAX_OUTPUT_LENGTH)
+                    : next;
+            };
 
-        const appendOutput = (
-            current: string,
-            value: Buffer
-        ) => {
-            const next = current + value.toString();
+            child.stdout.on(
+                "data",
+                (data: Buffer) => {
+                    stdout =
+                        appendOutput(
+                            stdout,
+                            data
+                        );
+                }
+            );
 
-            return next.length > MAX_OUTPUT_LENGTH
-                ? next.slice(0, MAX_OUTPUT_LENGTH)
-                : next;
-        };
+            child.stderr.on(
+                "data",
+                (data: Buffer) => {
+                    stderr =
+                        appendOutput(
+                            stderr,
+                            data
+                        );
+                }
+            );
 
-        child.stdout.on(
-            "data",
-            (data: Buffer) => {
-                stdout = appendOutput(
-                    stdout,
-                    data
-                );
-            }
-        );
+            const timeout =
+                setTimeout(
+                    async () => {
+                        child.kill();
 
-        child.stderr.on(
-            "data",
-            (data: Buffer) => {
-                stderr = appendOutput(
-                    stderr,
-                    data
-                );
-            }
-        );
+                        execution.status =
+                            "FAILED";
 
-        const timeout = setTimeout(() => {
-            child.kill();
+                        execution.stdout =
+                            stdout;
 
-            execution.status = "FAILED";
-            execution.stdout = stdout;
-            execution.stderr =
-                stderr + "\nCommand timed out.";
-            execution.exitCode = null;
-            execution.duration =
-                Date.now() - startedAt;
-
-            execution.save()
-                .then(() => {
-                    resolve({
-                        success: false,
-                        exitCode: null,
-                        stdout,
-                        stderr:
+                        execution.stderr =
                             stderr +
-                            "\nCommand timed out.",
-                        duration:
-                            Date.now() - startedAt
-                    });
-                })
-                .catch(reject);
-        }, COMMAND_TIMEOUT);
+                            "\nDocker command timed out.";
 
-        child.on(
-            "error",
-            async (error) => {
-                clearTimeout(timeout);
+                        execution.exitCode =
+                            null;
 
-                execution.status = "FAILED";
-                execution.stdout = stdout;
-                execution.stderr =
-                    error.message;
-                execution.exitCode = null;
-                execution.duration =
-                    Date.now() - startedAt;
+                        execution.duration =
+                            Date.now() -
+                            startedAt;
 
-                try {
-                    await execution.save();
-                    reject(error);
-                } catch (saveError) {
-                    reject(saveError);
+                        try {
+                            await execution.save();
+
+                            resolve({
+                                success: false,
+                                exitCode: null,
+                                stdout,
+                                stderr:
+                                    stderr +
+                                    "\nDocker command timed out.",
+                                duration:
+                                    Date.now() -
+                                    startedAt
+                            });
+                        } catch (error) {
+                            reject(error);
+                        }
+                    },
+                    COMMAND_TIMEOUT
+                );
+
+            child.on(
+                "error",
+                async (error) => {
+                    clearTimeout(timeout);
+
+                    execution.status =
+                        "FAILED";
+
+                    execution.stdout =
+                        stdout;
+
+                    execution.stderr =
+                        error.message;
+
+                    execution.exitCode =
+                        null;
+
+                    execution.duration =
+                        Date.now() -
+                        startedAt;
+
+                    try {
+                        await execution.save();
+                        reject(error);
+                    } catch (saveError) {
+                        reject(saveError);
+                    }
                 }
-            }
-        );
+            );
 
-        child.on(
-            "close",
-            async (code) => {
-                clearTimeout(timeout);
+            child.on(
+                "close",
+                async (code) => {
+                    clearTimeout(timeout);
 
-                const success = code === 0;
+                    const success =
+                        code === 0;
 
-                execution.status =
-                    success
-                        ? "COMPLETED"
-                        : "FAILED";
+                    execution.status =
+                        success
+                            ? "COMPLETED"
+                            : "FAILED";
 
-                execution.stdout = stdout;
-                execution.stderr = stderr;
-                execution.exitCode = code;
-                execution.duration =
-                    Date.now() - startedAt;
+                    execution.stdout =
+                        stdout;
 
-                try {
-                    await execution.save();
+                    execution.stderr =
+                        stderr;
 
-                    resolve({
-                        success,
-                        exitCode: code,
-                        stdout,
-                        stderr,
-                        duration:
-                            Date.now() - startedAt
-                    });
-                } catch (error) {
-                    reject(error);
+                    execution.exitCode =
+                        code;
+
+                    execution.duration =
+                        Date.now() -
+                        startedAt;
+
+                    try {
+                        await execution.save();
+
+                        resolve({
+                            success,
+                            exitCode: code,
+                            stdout,
+                            stderr,
+                            duration:
+                                Date.now() -
+                                startedAt
+                        });
+                    } catch (error) {
+                        reject(error);
+                    }
                 }
-            }
-        );
-    });
+            );
+        }
+    );
 };
