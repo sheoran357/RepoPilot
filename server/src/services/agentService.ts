@@ -10,6 +10,11 @@ import {
     runAgentLoop
 } from "../agent/agentLoop.js";
 
+import {
+    createWorkspace,
+    removeWorkspace
+} from "./workspaceService.js";
+
 export const startAgentRun = async (
     taskId: string,
     userId: string
@@ -24,9 +29,10 @@ export const startAgentRun = async (
     }
 
     const repository =
-        await Repository.findById(
-            task.repositoryId
-        );
+        await Repository.findOne({
+            _id: task.repositoryId,
+            userId
+        });
 
     if (!repository) {
         throw new Error(
@@ -89,7 +95,17 @@ ${task.description}`,
 
     const startTime = Date.now();
 
+    let workspacePath: string | undefined;
+
     try {
+        workspacePath =
+            await createWorkspace(
+                user.githubAccessToken,
+                owner,
+                repo,
+                agentRun._id.toString()
+            );
+
         const result =
             await runAgentLoop(
                 agent,
@@ -98,7 +114,10 @@ ${task.description}`,
                         user.githubAccessToken,
 
                     owner,
-                    repo
+                    repo,
+
+                    workingDirectory:
+                        workspacePath
                 }
             );
 
@@ -144,5 +163,18 @@ ${task.description}`,
         await agentRun.save();
 
         throw error;
+    } finally {
+        if (workspacePath) {
+            try {
+                await removeWorkspace(
+                    workspacePath
+                );
+            } catch (cleanupError) {
+                console.error(
+                    "Failed to clean execution workspace:",
+                    cleanupError
+                );
+            }
+        }
     }
 };
