@@ -22,11 +22,13 @@ interface AgentLoopInput {
 }
 
 const MAX_STEPS = 8;
-
 const allowedTools = [
     "search_code",
     "get_file",
-    "list_files"
+    "list_files",
+    "edit_file",
+    "create_file",
+    "delete_file"
 ];
 
 export const runAgentLoop = async (

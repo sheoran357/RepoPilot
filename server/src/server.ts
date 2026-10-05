@@ -20,6 +20,7 @@ import githubIssueRoutes from "./routes/githubIssueRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import githubWebhookRoutes from "./routes/githubWebhookRoutes.js";
 import githubToolRoutes from "./routes/githubToolRoutes.js";
+import fileChangeApprovalRoutes from "./routes/fileChangeApprovalRoutes.js";
 
 dotenv.config();
 
@@ -35,6 +36,10 @@ app.use(
 );
 
 
+app.use(
+    "/api/file-changes",
+    fileChangeApprovalRoutes
+);
 
 app.use(
     "/api/github/tools",
@@ -58,6 +63,11 @@ app.use(
 app.use(
     "/api/github/issues",
     githubIssueRoutes
+);
+
+app.use(
+    "/api/file-changes",
+    fileChangeRoutes
 );
 
 app.use("/api/auth", authRoutes);

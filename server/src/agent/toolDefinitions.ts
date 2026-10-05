@@ -1,4 +1,5 @@
 export const toolDefinitions = [
+
     {
         name: "search_code",
         description:
@@ -7,6 +8,7 @@ export const toolDefinitions = [
             searchTerm: "string"
         }
     },
+
     {
         name: "get_file",
         description:
@@ -15,10 +17,41 @@ export const toolDefinitions = [
             path: "string"
         }
     },
+
     {
         name: "list_files",
         description:
             "List files and folders in the repository root.",
         parameters: {}
+    },
+
+    {
+        name: "edit_file",
+        description:
+            "Propose a modification to an existing file. The complete new file content must be provided.",
+        parameters: {
+            path: "string",
+            newContent: "string"
+        }
+    },
+
+    {
+        name: "create_file",
+        description:
+            "Propose creation of a new file. The complete file content must be provided.",
+        parameters: {
+            path: "string",
+            newContent: "string"
+        }
+    },
+
+    {
+        name: "delete_file",
+        description:
+            "Propose deletion of an existing file.",
+        parameters: {
+            path: "string"
+        }
     }
+
 ];

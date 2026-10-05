@@ -1,44 +1,46 @@
 import { Request, Response } from "express";
+
 import FileChange from "../models/FileChange.js";
 
-export const createFileChange = async (
+
+export const getRunChanges = async (
     req: Request,
     res: Response
 ) => {
-    try {
-        const {
-            runId,
-            filePath,
-            changeType,
-            additions,
-            deletions,
-            diff
-        } = req.body;
 
-        if (!runId || !filePath || !changeType) {
+    try {
+
+        const { runId } = req.params;
+
+        if (!runId) {
+
             return res.status(400).json({
-                message: "runId, filePath and changeType are required"
+                message: "runId is required"
             });
         }
 
-        const fileChange = await FileChange.create({
-            runId,
-            filePath,
-            changeType,
-            additions,
-            deletions,
-            diff
+
+        const changes =
+            await FileChange.find({
+                runId
+            }).sort({
+                createdAt: 1
+            });
+
+
+        return res.status(200).json({
+            changes
         });
 
-        res.status(201).json({
-            message: "File change recorded successfully",
-            fileChange
-        });
     } catch (error) {
-        console.error("Error recording file change:", error);
 
-        res.status(500).json({
-            message: "Failed to record file change"
+        console.error(
+            "Error fetching file changes:",
+            error
+        );
+
+        return res.status(500).json({
+            message: "Failed to fetch file changes"
         });
     }
 };

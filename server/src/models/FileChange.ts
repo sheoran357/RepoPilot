@@ -3,10 +3,22 @@ import mongoose, { Schema, Document } from "mongoose";
 export interface IFileChange extends Document {
     runId: mongoose.Types.ObjectId;
     filePath: string;
-    changeType: string;
+
+    changeType: "ADDED" | "MODIFIED" | "DELETED";
+
+    oldContent?: string;
+    newContent?: string;
+
     additions: number;
     deletions: number;
-    diff?: string;
+
+    diff: string;
+
+    status:
+        | "PENDING"
+        | "APPROVED"
+        | "REJECTED"
+        | "APPLIED";
 }
 
 const fileChangeSchema = new Schema<IFileChange>(
@@ -24,12 +36,16 @@ const fileChangeSchema = new Schema<IFileChange>(
 
         changeType: {
             type: String,
-            enum: [
-                "ADDED",
-                "MODIFIED",
-                "DELETED"
-            ],
+            enum: ["ADDED", "MODIFIED", "DELETED"],
             required: true
+        },
+
+        oldContent: {
+            type: String
+        },
+
+        newContent: {
+            type: String
         },
 
         additions: {
@@ -43,7 +59,19 @@ const fileChangeSchema = new Schema<IFileChange>(
         },
 
         diff: {
-            type: String
+            type: String,
+            default: ""
+        },
+
+        status: {
+            type: String,
+            enum: [
+                "PENDING",
+                "APPROVED",
+                "REJECTED",
+                "APPLIED"
+            ],
+            default: "PENDING"
         }
     },
     {

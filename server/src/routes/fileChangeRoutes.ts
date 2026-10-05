@@ -1,8 +1,17 @@
 import { Router } from "express";
-import { createFileChange } from "../controllers/fileChangeController.js";
+
+import {
+    getRunChanges
+} from "../controllers/fileChangeController.js";
+
 
 const router = Router();
 
-router.post("/", createFileChange);
+
+router.get(
+    "/runs/:runId/changes",
+    getRunChanges
+);
+
 
 export default router;

@@ -5,6 +5,7 @@ import {
     ToolContext
 } from "./agentTools.js";
 
+
 export const runTool = async (
     runId: string,
     toolName: string,
@@ -22,6 +23,7 @@ export const runTool = async (
     try {
 
         const result = await executeTool(
+            runId,
             toolName,
             input,
             context
