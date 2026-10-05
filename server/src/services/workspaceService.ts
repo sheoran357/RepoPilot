@@ -78,56 +78,68 @@ export const createWorkspace = async (
             `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${accessToken}`).toString("base64")}`
     };
 
-    await new Promise<void>(
-        (resolve, reject) => {
-            const child = spawn(
-                "git",
-                [
-                    "clone",
-                    "--depth",
-                    "1",
-                    repositoryUrl,
-                    workspacePath
-                ],
-                {
-                    cwd: workspaceRoot,
-                    env: gitConfig,
-                    shell: false,
-                    windowsHide: true
-                }
-            );
-
-            let stderr = "";
-
-            child.stderr.on(
-                "data",
-                (data: Buffer) => {
-                    stderr += data.toString();
-                }
-            );
-
-            child.on(
-                "error",
-                reject
-            );
-
-            child.on(
-                "close",
-                (code) => {
-                    if (code === 0) {
-                        resolve();
-                        return;
+    try {
+        await new Promise<void>(
+            (resolve, reject) => {
+                const child = spawn(
+                    "git",
+                    [
+                        "clone",
+                        "--depth",
+                        "1",
+                        repositoryUrl,
+                        workspacePath
+                    ],
+                    {
+                        cwd: workspaceRoot,
+                        env: gitConfig,
+                        shell: false,
+                        windowsHide: true
                     }
+                );
 
-                    reject(
-                        new Error(
-                            `Failed to clone repository: ${stderr.trim() || "git clone failed"}`
-                        )
-                    );
-                }
-            );
-        }
-    );
+                let stderr = "";
+
+                child.stderr.on(
+                    "data",
+                    (data: Buffer) => {
+                        stderr += data.toString();
+                    }
+                );
+
+                child.on(
+                    "error",
+                    reject
+                );
+
+                child.on(
+                    "close",
+                    (code) => {
+                        if (code === 0) {
+                            resolve();
+                            return;
+                        }
+
+                        reject(
+                            new Error(
+                                `Failed to clone repository: ${stderr.trim() || "git clone failed"}`
+                            )
+                        );
+                    }
+                );
+            }
+        );
+    } catch (error) {
+        await fs.rm(
+            workspacePath,
+            {
+                recursive: true,
+                force: true
+            }
+        );
+
+        throw error;
+    }
 
     return workspacePath;
 };
