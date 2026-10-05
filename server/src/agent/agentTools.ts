@@ -52,7 +52,8 @@ export const executeTool = async (
             return await listRepositoryFiles(
                 context.accessToken,
                 context.owner,
-                context.repo
+                context.repo,
+                input.path || ""
             );
 
 
