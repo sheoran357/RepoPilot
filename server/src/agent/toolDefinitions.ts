@@ -21,8 +21,10 @@ export const toolDefinitions = [
     {
         name: "list_files",
         description:
-            "List files and folders in the repository root.",
-        parameters: {}
+            "List files and folders in the repository. An optional path can be provided to inspect a specific directory.",
+        parameters: {
+            path: "string (optional)"
+        }
     },
 
     {
