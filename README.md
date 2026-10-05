@@ -34,6 +34,10 @@ The agent can:
 -   Prevent duplicate tool calls
 -   Properly handle agent completion
 -   Persist execution information in MongoDB
+-   Clone repositories into temporary managed execution workspaces
+-   Execute allowed commands inside a Docker sandbox
+-   Enforce command timeout, CPU, memory, PID, and network restrictions
+-   Automatically clean execution workspaces after agent runs
 -   Successfully complete a real multi-step coding agent run
 
 ### Latest successful coding agent run
@@ -223,7 +227,7 @@ architecture incrementally.
   Component            Planned Technology
   -------------------- ----------------------------
   Local LLM fallback   Ollama + Qwen3
-  Code execution       Docker
+  Code execution       Docker sandbox
   Job queue            Redis + BullMQ
   Testing              Jest / Supertest
   Agent graph          LangGraph later, if useful
@@ -270,6 +274,8 @@ server/
     ├── services/
     │   ├── llmService.ts
     │   ├── githubService.ts
+    │   ├── executionService.ts
+    │   ├── workspaceService.ts
     │   └── ...
     │
     ├── tools/
@@ -1329,3 +1335,49 @@ so the agent is not tightly coupled to a single provider.
 
 This keeps the core agent architecture independent from the database and
 model-provider implementation.
+
+
+------------------------------------------------------------------------
+
+# 18. Safe Code Execution
+
+RepoPilot executes development commands inside a temporary managed workspace rather than inside the backend source directory.
+
+``` text
+Agent Run
+    ↓
+Clone GitHub Repository
+    ↓
+Managed Workspace
+    ↓
+Docker Sandbox
+    ↓
+Allowed Command
+    ↓
+Execution Result
+    ↓
+Workspace Cleanup
+```
+
+The current Docker sandbox applies:
+
+-   No container network access
+-   1 CPU limit
+-   512 MB memory limit
+-   128 process limit
+-   Read-only container filesystem
+-   Writable repository workspace
+-   30 second command timeout
+-   20,000 character stdout/stderr limit
+-   Restricted command allowlist
+
+Currently allowed commands are:
+
+``` text
+node --version
+npm --version
+npm test
+npm run build
+```
+
+Dependency installation and autonomous test/debugging will be added after the sandbox execution path is verified locally.
