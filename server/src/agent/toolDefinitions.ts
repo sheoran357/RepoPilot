@@ -54,6 +54,15 @@ export const toolDefinitions = [
         parameters: {
             path: "string"
         }
+    },
+
+    {
+        name: "run_command",
+        description:
+            "Run an allowed development command inside the configured execution workspace and return stdout, stderr, exit code, and duration.",
+        parameters: {
+            command: "string"
+        }
     }
 
 ];
