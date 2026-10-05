@@ -19,6 +19,7 @@ interface AgentLoopInput {
     accessToken: string;
     owner: string;
     repo: string;
+    workingDirectory?: string;
 }
 
 const MAX_STEPS = 8;
@@ -223,7 +224,12 @@ export const runAgentLoop = async (
 
                         decision.input,
 
-                        input
+                        {
+                            ...input,
+                            workingDirectory:
+                                input.workingDirectory ||
+                                process.env.EXECUTION_WORKSPACE
+                        }
                     );
 
                 // -----------------------------
