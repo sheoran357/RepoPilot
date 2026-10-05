@@ -1,5 +1,10 @@
 import { spawn } from "child_process";
+import path from "path";
 import Execution from "../models/Execution.js";
+
+import {
+    validateWorkspace
+} from "./workspaceService.js";
 
 const COMMAND_TIMEOUT = 30_000;
 const MAX_OUTPUT_LENGTH = 20_000;
@@ -22,6 +27,11 @@ export const runCommand = async (
         throw new Error("Command is not allowed");
     }
 
+    const safeWorkingDirectory =
+        validateWorkspace(
+            workingDirectory
+        );
+
     const execution = await Execution.create({
         runId,
         command: normalizedCommand,
@@ -32,17 +42,21 @@ export const runCommand = async (
 
     return await new Promise((resolve, reject) => {
         const parts = normalizedCommand.split(/\s+/);
+
         const program =
             process.platform === "win32" && parts[0] === "npm"
                 ? "npm.cmd"
                 : parts[0];
+
         const args = parts.slice(1);
 
         const child = spawn(
             program,
             args,
             {
-                cwd: workingDirectory,
+                cwd: path.resolve(
+                    safeWorkingDirectory
+                ),
                 shell: false,
                 windowsHide: true
             }
@@ -62,13 +76,25 @@ export const runCommand = async (
                 : next;
         };
 
-        child.stdout.on("data", (data: Buffer) => {
-            stdout = appendOutput(stdout, data);
-        });
+        child.stdout.on(
+            "data",
+            (data: Buffer) => {
+                stdout = appendOutput(
+                    stdout,
+                    data
+                );
+            }
+        );
 
-        child.stderr.on("data", (data: Buffer) => {
-            stderr = appendOutput(stderr, data);
-        });
+        child.stderr.on(
+            "data",
+            (data: Buffer) => {
+                stderr = appendOutput(
+                    stderr,
+                    data
+                );
+            }
+        );
 
         const timeout = setTimeout(() => {
             child.kill();
@@ -78,7 +104,8 @@ export const runCommand = async (
             execution.stderr =
                 stderr + "\nCommand timed out.";
             execution.exitCode = null;
-            execution.duration = Date.now() - startedAt;
+            execution.duration =
+                Date.now() - startedAt;
 
             execution.save()
                 .then(() => {
@@ -87,55 +114,70 @@ export const runCommand = async (
                         exitCode: null,
                         stdout,
                         stderr:
-                            stderr + "\nCommand timed out.",
-                        duration: Date.now() - startedAt
+                            stderr +
+                            "\nCommand timed out.",
+                        duration:
+                            Date.now() - startedAt
                     });
                 })
                 .catch(reject);
         }, COMMAND_TIMEOUT);
 
-        child.on("error", async (error) => {
-            clearTimeout(timeout);
+        child.on(
+            "error",
+            async (error) => {
+                clearTimeout(timeout);
 
-            execution.status = "FAILED";
-            execution.stdout = stdout;
-            execution.stderr = error.message;
-            execution.exitCode = null;
-            execution.duration = Date.now() - startedAt;
+                execution.status = "FAILED";
+                execution.stdout = stdout;
+                execution.stderr =
+                    error.message;
+                execution.exitCode = null;
+                execution.duration =
+                    Date.now() - startedAt;
 
-            try {
-                await execution.save();
-                reject(error);
-            } catch (saveError) {
-                reject(saveError);
+                try {
+                    await execution.save();
+                    reject(error);
+                } catch (saveError) {
+                    reject(saveError);
+                }
             }
-        });
+        );
 
-        child.on("close", async (code) => {
-            clearTimeout(timeout);
+        child.on(
+            "close",
+            async (code) => {
+                clearTimeout(timeout);
 
-            const success = code === 0;
+                const success = code === 0;
 
-            execution.status =
-                success ? "COMPLETED" : "FAILED";
-            execution.stdout = stdout;
-            execution.stderr = stderr;
-            execution.exitCode = code;
-            execution.duration = Date.now() - startedAt;
+                execution.status =
+                    success
+                        ? "COMPLETED"
+                        : "FAILED";
 
-            try {
-                await execution.save();
+                execution.stdout = stdout;
+                execution.stderr = stderr;
+                execution.exitCode = code;
+                execution.duration =
+                    Date.now() - startedAt;
 
-                resolve({
-                    success,
-                    exitCode: code,
-                    stdout,
-                    stderr,
-                    duration: Date.now() - startedAt
-                });
-            } catch (error) {
-                reject(error);
+                try {
+                    await execution.save();
+
+                    resolve({
+                        success,
+                        exitCode: code,
+                        stdout,
+                        stderr,
+                        duration:
+                            Date.now() - startedAt
+                    });
+                } catch (error) {
+                    reject(error);
+                }
             }
-        });
+        );
     });
 };
