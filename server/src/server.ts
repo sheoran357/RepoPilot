@@ -21,6 +21,7 @@ import authRoutes from "./routes/authRoutes.js";
 import githubWebhookRoutes from "./routes/githubWebhookRoutes.js";
 import githubToolRoutes from "./routes/githubToolRoutes.js";
 import fileChangeApprovalRoutes from "./routes/fileChangeApprovalRoutes.js";
+import executionRoutes from "./routes/executionRoutes.js";
 
 dotenv.config();
 
@@ -79,6 +80,7 @@ app.use("/api/agent-steps", agentStepRoutes);
 app.use("/api/tool-calls", toolCallRoutes);
 app.use("/api/file-changes", fileChangeRoutes);
 app.use("/api/test-runs", testRunRoutes);
+app.use("/api/executions", executionRoutes);
 app.use("/api/pull-requests", pullRequestRoutes);
 
 app.get("/", (req, res) => {
