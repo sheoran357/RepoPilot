@@ -28,7 +28,8 @@ const allowedTools = [
     "list_files",
     "edit_file",
     "create_file",
-    "delete_file"
+    "delete_file",
+    "run_command"
 ];
 
 const codingTools = [
