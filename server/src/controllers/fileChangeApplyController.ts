@@ -47,7 +47,9 @@ export const applyChange = async (
 
         if (change.status !== "APPROVED") {
             return res.status(400).json({
-                message: "Cannot apply change with status " + change.status
+                message:
+                    "Cannot apply change with status " +
+                    change.status
             });
         }
 
@@ -68,7 +70,8 @@ export const applyChange = async (
 
         if (!task) {
             return res.status(403).json({
-                message: "You do not have access to this file change"
+                message:
+                    "You do not have access to this file change"
             });
         }
 
@@ -80,7 +83,8 @@ export const applyChange = async (
 
         if (!repository) {
             return res.status(403).json({
-                message: "You do not have access to this repository"
+                message:
+                    "You do not have access to this repository"
             });
         }
 
@@ -89,7 +93,8 @@ export const applyChange = async (
 
         if (!user || !user.githubAccessToken) {
             return res.status(400).json({
-                message: "GitHub account is not connected"
+                message:
+                    "GitHub account is not connected"
             });
         }
 
@@ -98,7 +103,8 @@ export const applyChange = async (
 
         if (!owner || !repo) {
             return res.status(400).json({
-                message: "Invalid repository full name"
+                message:
+                    "Invalid repository full name"
             });
         }
 
@@ -132,7 +138,24 @@ export const applyChange = async (
 
             if (!currentFile.sha) {
                 return res.status(400).json({
-                    message: "Unable to get current file SHA from GitHub"
+                    message:
+                        "Unable to get current file SHA from GitHub"
+                });
+            }
+
+            const currentContent =
+                Buffer.from(
+                    currentFile.content,
+                    "base64"
+                ).toString("utf-8");
+
+            if (
+                currentContent !==
+                (change.oldContent || "")
+            ) {
+                return res.status(409).json({
+                    message:
+                        "File changed on GitHub after this change was proposed. The approved change was not applied."
                 });
             }
 
@@ -158,7 +181,24 @@ export const applyChange = async (
 
             if (!currentFile.sha) {
                 return res.status(400).json({
-                    message: "Unable to get current file SHA from GitHub"
+                    message:
+                        "Unable to get current file SHA from GitHub"
+                });
+            }
+
+            const currentContent =
+                Buffer.from(
+                    currentFile.content,
+                    "base64"
+                ).toString("utf-8");
+
+            if (
+                currentContent !==
+                (change.oldContent || "")
+            ) {
+                return res.status(409).json({
+                    message:
+                        "File changed on GitHub after this change was proposed. The approved deletion was not applied."
                 });
             }
 
@@ -173,10 +213,12 @@ export const applyChange = async (
         }
 
         change.status = "APPLIED";
+
         await change.save();
 
         return res.status(200).json({
-            message: "File change applied successfully",
+            message:
+                "File change applied successfully",
             change,
             result
         });
@@ -188,7 +230,8 @@ export const applyChange = async (
         );
 
         return res.status(500).json({
-            message: "Failed to apply file change"
+            message:
+                "Failed to apply file change"
         });
     }
 };
