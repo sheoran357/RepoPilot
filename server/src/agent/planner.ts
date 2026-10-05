@@ -197,6 +197,14 @@ Important rules:
 - After a successful change proposal, inspect the result
   and decide whether more changes are required.
 - Use finish when the task has been sufficiently completed.
+- If the user's task requires a code change, you MUST propose
+  that change using edit_file, create_file, or delete_file before
+  using finish.
+- Do NOT use finish merely because you have enough information
+  to understand the task.
+- For code-change tasks, finish is only allowed after at least
+  one required coding change has been successfully proposed,
+  unless the requested change is proven unnecessary or impossible.
 
 ACTION RULES:
 
@@ -467,8 +475,10 @@ first inspect it using get_file.
 If you need to locate relevant code,
 use search_code.
 
-If a code change is required, use edit_file,
+If a code change is required, you MUST use edit_file,
 create_file, or delete_file as appropriate.
+
+Do not finish before proposing the required code change.
 
 Remember that coding tools only create
 PENDING FileChange records and do not directly
@@ -483,6 +493,11 @@ the task.
 
 If the task has been sufficiently completed,
 return the "finish" action immediately.
+
+However, if the task requires a code change and no coding
+tool has successfully proposed that change yet, the task is
+NOT sufficiently completed. Choose edit_file, create_file,
+or delete_file instead.
 
 Choose exactly ONE next action.
 
