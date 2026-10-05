@@ -267,6 +267,24 @@ export const runAgentLoop = async (
                 );
 
                 // -----------------------------
+                // Finish successful command tasks
+                // -----------------------------
+
+                if (
+                    decision.toolName === "run_command" &&
+                    result?.success === true &&
+                    !requiresCodeChange(state.goal)
+                ) {
+                    agent.addObservation(
+                        "The requested command completed successfully. No code change is required, so the agent run is complete."
+                    );
+
+                    agent.complete();
+
+                    break;
+                }
+
+                // -----------------------------
                 // Last-step protection
                 // -----------------------------
 
