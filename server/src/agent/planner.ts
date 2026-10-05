@@ -33,34 +33,28 @@ export interface PlannerDecision {
 
 const parseJSON = (text: string) => {
 
+    const cleanedText = text
+        .trim()
+        .replace(/^\`\`\`json\s*/i, "")
+        .replace(/^\`\`\`\s*/i, "")
+        .replace(/\s*\`\`\`$/i, "")
+        .trim();
+
     try {
 
-        return JSON.parse(text);
+        return JSON.parse(cleanedText);
 
     } catch {
 
-        const cleanedText = text
-            .replace(/^\`\`\`json\s\*/i, "")
-            .replace(/^\`\`\`\s\*/i, "")
-            .replace(/\s\*\`\`\`$/i, "")
-            .trim();
+        console.error(
+            "Invalid JSON returned by LLM:"
+        );
 
-        try {
+        console.error(text);
 
-            return JSON.parse(cleanedText);
-
-        } catch {
-
-            console.error(
-                "Invalid JSON returned by LLM:"
-            );
-
-            console.error(text);
-
-            throw new Error(
-                "LLM returned invalid JSON"
-            );
-        }
+        throw new Error(
+            "LLM returned invalid JSON"
+        );
     }
 };
 
@@ -184,6 +178,15 @@ Available tools:
     "path": "file path"
   }
 - This does NOT immediately modify GitHub.
+
+7. run_command
+- Runs an allowed development command inside the managed execution workspace.
+- Use this when the task explicitly requires running a command.
+- Requires:
+  {
+    "command": "node --version"
+  }
+- Only use commands supported by the available tool definition.
 
 Important rules:
 
