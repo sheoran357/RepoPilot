@@ -75,7 +75,7 @@ export const createWorkspace = async (
         GIT_CONFIG_KEY_0:
             "http.extraheader",
         GIT_CONFIG_VALUE_0:
-            `AUTHORIZATION: bearer ${accessToken}`
+            `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${accessToken}`).toString("base64")}`
     };
 
     await new Promise<void>(
