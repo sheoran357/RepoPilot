@@ -525,6 +525,17 @@ Remember:
         parseJSON(response);
 
 
+    // Gemini can occasionally return finish as a tool name.
+    // Normalize that response instead of failing the agent run.
+    if (
+        result.action === "tool" &&
+        result.toolName === "finish"
+    ) {
+        result.action = "finish";
+        result.toolName = undefined;
+    }
+
+
     // ---------------------------------
     // Validate action
     // ---------------------------------
