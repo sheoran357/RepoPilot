@@ -13,7 +13,7 @@ execution, and production job processing**.
 
 ## Current Status
 
-RepoPilot currently has a working **read-only AI agent loop**.
+RepoPilot currently has a working **AI coding agent loop with human-reviewed file changes**.
 
 The agent can:
 
@@ -25,13 +25,18 @@ The agent can:
 -   Generate structured JSON plans and actions
 -   Validate LLM actions before execution
 -   Inspect repositories through GitHub tools
+-   Propose file modifications through coding tools
+-   Generate and persist file diffs
+-   Require human approval before applying changes
+-   Apply approved changes through the GitHub API
+-   Track file-change status from `PENDING` to `APPROVED` to `APPLIED`
 -   Record tool results and observations
 -   Prevent duplicate tool calls
 -   Properly handle agent completion
 -   Persist execution information in MongoDB
--   Successfully complete a real multi-step agent run
+-   Successfully complete a real multi-step coding agent run
 
-### Latest successful agent run
+### Latest successful coding agent run
 
 ``` text
 Task
@@ -44,14 +49,23 @@ Plan
   ↓
 list_files
   ↓
-get_file (README.md)
+get_file
   ↓
-finish
+edit_file
   ↓
-AgentRun = COMPLETED
+FileChange = PENDING
+  ↓
+Human Approval
+  ↓
+FileChange = APPROVED
+  ↓
+GitHub API
+  ↓
+FileChange = APPLIED
 ```
 
-The latest tested run completed successfully in **2 tool steps**.
+The latest tested coding run completed successfully and applied a real file
+change to GitHub after human approval.
 
 ------------------------------------------------------------------------
 
@@ -537,7 +551,7 @@ Current protections include:
 
 # 12. Current GitHub Agent Tools
 
-The current agent is intentionally **read-only**.
+The current agent supports both **repository inspection** and **safe file-change proposals**. Write operations are not applied immediately; they create `FileChange` records that must be approved before being applied to GitHub.
 
 ## `list_files`
 
@@ -581,13 +595,32 @@ GitHub API
 Matching code
 ```
 
+## `edit_file`
+
+Proposes a modification to an existing file and creates a pending
+`FileChange`.
+
+## `create_file`
+
+Proposes creation of a new file and creates a pending `FileChange`.
+
+## `delete_file`
+
+Proposes deletion of an existing file and creates a pending `FileChange`.
+
 Current tool registry:
 
 ``` text
 list_files
 get_file
 search_code
+edit_file
+create_file
+delete_file
 ```
+
+The coding tools currently generate changes for human review instead of
+directly modifying the repository.
 
 ------------------------------------------------------------------------
 
@@ -667,9 +700,9 @@ This provides the foundation for a future detailed execution timeline.
 
 ------------------------------------------------------------------------
 
-# 15. Current Successful Execution
+# 15. Current Successful Coding Execution
 
-The latest successful real agent run followed this flow:
+The latest successful real coding agent run followed this flow:
 
 ``` text
 Task
@@ -684,28 +717,50 @@ Create Plan
 list_files
  │
  ▼
+list_files (server)
+ │
+ ▼
 get_file
  │
- └── README.md
+ └── server/server.js
  │
  ▼
-LLM evaluates result
+edit_file
  │
  ▼
-finish
+FileChange = PENDING
+ │
+ ▼
+Human Approval
+ │
+ ▼
+FileChange = APPROVED
+ │
+ ▼
+GitHub API
+ │
+ ▼
+GitHub Commit
+ │
+ ▼
+FileChange = APPLIED
  │
  ▼
 AgentRun = COMPLETED
 ```
 
+The tested change added a comment to `server/server.js`.
+
 Result:
 
 ``` text
-2 tool steps
-Status: COMPLETED
+AgentRun: COMPLETED
+FileChange: APPLIED
+GitHub commit: created successfully
 ```
 
-This confirms that the complete read-only agent pipeline is functional.
+This confirms that the coding-agent proposal, human approval, and GitHub
+application pipeline is functional.
 
 ------------------------------------------------------------------------
 
@@ -759,12 +814,12 @@ finish
 
 # Phase 3 --- Coding Agent
 
-### Status: NEXT
+### Status: COMPLETE
 
-The next major milestone is allowing RepoPilot to modify repository
-code.
+RepoPilot can now propose changes to repository files and keep them
+separate from the live GitHub repository until a human approves them.
 
-Planned tools:
+Implemented tools:
 
 ``` text
 edit_file
@@ -772,7 +827,7 @@ create_file
 delete_file
 ```
 
-The architecture becomes:
+Current architecture:
 
 ``` text
 Read
@@ -785,26 +840,44 @@ Edit
  ↓
 Generate Diff
  ↓
+FileChange
+ ↓
 Human Review
+ ↓
+Apply Approved Change
+ ↓
+GitHub
 ```
 
-A `FileChange` model will track modifications.
-
-Example:
+The `FileChange` model tracks:
 
 ``` text
 FileChange
 ├── runId
-├── path
-├── operation
+├── filePath
+├── changeType
 ├── oldContent
 ├── newContent
-└── diff
+├── additions
+├── deletions
+├── diff
+└── status
 ```
 
-The agent should not immediately push changes to GitHub.
+Supported statuses:
 
-Changes should first be generated and reviewed.
+``` text
+PENDING
+   ↓
+APPROVED
+   ↓
+APPLIED
+```
+
+Rejected changes can also be represented using the `REJECTED` status.
+
+The agent does not immediately apply generated changes. Human approval is
+required before the GitHub API is used.
 
 ------------------------------------------------------------------------
 
@@ -1167,6 +1240,7 @@ LLM + Agent Tool Calling
 │ Coding Agent                │
 │ edit/create/delete files    │
 │ diff + FileChange           │
+│ human approval + apply      │
 └──────────────┬──────────────┘
                │
                ▼
@@ -1225,8 +1299,9 @@ Commit changes
 Create a Pull Request
 ```
 
-The project is therefore evolving from a **read-only repository agent**
-into a complete **AI Software Engineering Agent**.
+The project is therefore evolving from a repository inspection agent into
+a complete **AI Software Engineering Agent**, with the core coding-change
+and human-approval workflow now implemented.
 
 ------------------------------------------------------------------------
 
@@ -1236,11 +1311,11 @@ GitHub: https://github.com/sheoran357/RepoPilot
 
 ## Current Milestone
 
-**Working Read-Only AI Software Engineering Agent**
+**Working AI Coding Agent --- Safe File Modification + Human Approval**
 
 ### Next Milestone
 
-**Coding Agent --- Safe File Modification + Diff Generation**
+**Safe Code Execution --- Docker Sandbox + Test Execution**
 
 ------------------------------------------------------------------------
 
