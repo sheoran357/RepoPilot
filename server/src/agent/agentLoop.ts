@@ -40,6 +40,15 @@ const codingTools = [
 ];
 
 const requiresCodeChange = (goal: string) => {
+    const noCodeChangeRequested =
+        /\b(do not|don't|without|no)\b[\s\S]{0,60}\b(modif\w*|change\w*|edit\w*|create\w*|delete\w*)\b/i.test(
+            goal
+        );
+
+    if (noCodeChangeRequested) {
+        return false;
+    }
+
     return /\b(add|change|edit|modify|update|fix|create|delete|remove|implement|refactor|replace)\b/i.test(
         goal
     );
