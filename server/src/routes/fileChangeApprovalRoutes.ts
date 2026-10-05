@@ -12,12 +12,22 @@ import {
     applyChange
 } from "../controllers/fileChangeApplyController.js";
 
+import {
+    rejectChange
+} from "../controllers/fileChangeRejectController.js";
+
 const router = Router();
 
 router.post(
     "/:changeId/approve",
     authenticateUser,
     approveChange
+);
+
+router.post(
+    "/:changeId/reject",
+    authenticateUser,
+    rejectChange
 );
 
 router.post(
