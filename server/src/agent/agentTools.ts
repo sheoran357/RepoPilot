@@ -10,11 +10,16 @@ import {
     deleteFile
 } from "../tools/codingTool.js";
 
+import {
+    runCommand
+} from "../tools/executionTool.js";
+
 
 export interface ToolContext {
     accessToken: string;
     owner: string;
     repo: string;
+    workingDirectory?: string;
 }
 
 
@@ -28,7 +33,6 @@ export const executeTool = async (
     switch (toolName) {
 
         case "search_code":
-
             return await searchCode(
                 context.accessToken,
                 context.owner,
@@ -36,9 +40,7 @@ export const executeTool = async (
                 input.searchTerm
             );
 
-
         case "get_file":
-
             return await getFile(
                 context.accessToken,
                 context.owner,
@@ -46,9 +48,7 @@ export const executeTool = async (
                 input.path
             );
 
-
         case "list_files":
-
             return await listRepositoryFiles(
                 context.accessToken,
                 context.owner,
@@ -56,9 +56,7 @@ export const executeTool = async (
                 input.path || ""
             );
 
-
         case "edit_file":
-
             return await editFile(
                 runId,
                 context.accessToken,
@@ -68,18 +66,14 @@ export const executeTool = async (
                 input.newContent
             );
 
-
         case "create_file":
-
             return await createFile(
                 runId,
                 input.path,
                 input.newContent
             );
 
-
         case "delete_file":
-
             return await deleteFile(
                 runId,
                 context.accessToken,
@@ -88,9 +82,20 @@ export const executeTool = async (
                 input.path
             );
 
+        case "run_command":
+            if (!context.workingDirectory) {
+                throw new Error(
+                    "Execution workspace is not configured"
+                );
+            }
+
+            return await runCommand(
+                runId,
+                input.command,
+                context.workingDirectory
+            );
 
         default:
-
             throw new Error(
                 `Unknown tool: ${toolName}`
             );
