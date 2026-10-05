@@ -31,6 +31,18 @@ const allowedTools = [
     "delete_file"
 ];
 
+const codingTools = [
+    "edit_file",
+    "create_file",
+    "delete_file"
+];
+
+const requiresCodeChange = (goal: string) => {
+    return /\b(add|change|edit|modify|update|fix|create|delete|remove|implement|refactor|replace)\b/i.test(
+        goal
+    );
+};
+
 export const runAgentLoop = async (
     agent: Agent,
     input: AgentLoopInput
@@ -62,9 +74,6 @@ export const runAgentLoop = async (
             state.currentStep < MAX_STEPS
         ) {
 
-            const remainingSteps =
-                MAX_STEPS - state.currentStep;
-
             const decision =
                 await getNextAction({
                     goal: state.goal,
@@ -85,6 +94,25 @@ export const runAgentLoop = async (
             if (
                 decision.action === "finish"
             ) {
+
+                const hasCodingTool =
+                    state.toolHistory.some(
+                        (history) =>
+                            codingTools.includes(
+                                history.toolName
+                            )
+                    );
+
+                if (
+                    requiresCodeChange(state.goal) &&
+                    !hasCodingTool
+                ) {
+                    agent.addObservation(
+                        "Finish was rejected because this task requires a code change and no coding tool has successfully proposed one yet."
+                    );
+
+                    continue;
+                }
 
                 agent.addObservation(
                     `Agent finished investigation: ${decision.reason}`
@@ -137,12 +165,10 @@ export const runAgentLoop = async (
             if (previousCalls.length > 0) {
 
                 agent.addObservation(
-                    `The tool ${decision.toolName} with the same input was already executed. No need to repeat it.`
+                    `The tool ${decision.toolName} with the same input was already executed. Choose a different useful action.`
                 );
 
-                agent.complete();
-
-                break;
+                continue;
             }
 
             // -----------------------------
@@ -241,6 +267,23 @@ export const runAgentLoop = async (
                     state.currentStep >=
                     MAX_STEPS
                 ) {
+
+                    const hasCodingTool =
+                        state.toolHistory.some(
+                            (history) =>
+                                codingTools.includes(
+                                    history.toolName
+                                )
+                        );
+
+                    if (
+                        requiresCodeChange(state.goal) &&
+                        !hasCodingTool
+                    ) {
+                        throw new Error(
+                            "Agent reached the step limit before proposing the required code change"
+                        );
+                    }
 
                     agent.addObservation(
                         "Investigation step limit reached. Completing the agent run with the information collected so far."
