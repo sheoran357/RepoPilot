@@ -29,13 +29,21 @@ export const searchCode = async (
 export const listRepositoryFiles = async (
     accessToken: string,
     owner: string,
-    repo: string
+    repo: string,
+    path: string = ""
 ) => {
     const contents = await getRepositoryContents(
         accessToken,
         owner,
-        repo
+        repo,
+        path
     );
+
+    if (!Array.isArray(contents)) {
+        throw new Error(
+            "The requested path is not a directory"
+        );
+    }
 
     return contents.map((item: any) => ({
         name: item.name,
