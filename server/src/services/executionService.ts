@@ -7,35 +7,43 @@ import {
 } from "./workspaceService.js";
 
 const COMMAND_TIMEOUT = 30_000;
+const INSTALL_TIMEOUT = 300_000;
 const MAX_OUTPUT_LENGTH = 20_000;
 const DOCKER_IMAGE = "node:22-alpine";
 
 const allowedCommands = [
     "node --version",
     "npm --version",
-    "npm test",
-    "npm run build"
+    "npm test --prefix server",
+    "npm run build --prefix server"
 ];
 
-export const runCommand = async (
+const appendOutput = (
+    current: string,
+    value: Buffer
+) => {
+    const next =
+        current + value.toString();
+
+    return next.length > MAX_OUTPUT_LENGTH
+        ? next.slice(0, MAX_OUTPUT_LENGTH)
+        : next;
+};
+
+const runDockerCommand = async (
     runId: string,
     command: string,
-    workingDirectory: string
+    workingDirectory: string,
+    network: "none" | "bridge",
+    timeoutMs: number
 ) => {
-    const normalizedCommand =
-        command.trim();
-
-    if (!allowedCommands.includes(normalizedCommand)) {
-        throw new Error("Command is not allowed");
-    }
-
     const safeWorkingDirectory =
         validateWorkspace(workingDirectory);
 
     const execution =
         await Execution.create({
             runId,
-            command: normalizedCommand,
+            command,
             status: "RUNNING"
         });
 
@@ -44,7 +52,7 @@ export const runCommand = async (
     return await new Promise(
         (resolve, reject) => {
             const parts =
-                normalizedCommand.split(/\s+/);
+                command.split(/\s+/);
 
             const child = spawn(
                 "docker",
@@ -52,7 +60,7 @@ export const runCommand = async (
                     "run",
                     "--rm",
                     "--network",
-                    "none",
+                    network,
                     "--cpus",
                     "1",
                     "--memory",
@@ -63,7 +71,7 @@ export const runCommand = async (
                     "--tmpfs",
                     "/tmp:rw,noexec,nosuid,size=64m",
                     "-v",
-                        path.resolve(safeWorkingDirectory) + ":/workspace:rw",
+                    path.resolve(safeWorkingDirectory) + ":/workspace:rw",
                     "-w",
                     "/workspace",
                     DOCKER_IMAGE,
@@ -77,17 +85,30 @@ export const runCommand = async (
 
             let stdout = "";
             let stderr = "";
+            let finished = false;
 
-            const appendOutput = (
-                current: string,
-                value: Buffer
+            const finish = async (
+                status: "COMPLETED" | "FAILED",
+                exitCode: number | null,
+                errorOutput?: string
             ) => {
-                const next =
-                    current + value.toString();
+                if (finished) {
+                    return;
+                }
 
-                return next.length > MAX_OUTPUT_LENGTH
-                    ? next.slice(0, MAX_OUTPUT_LENGTH)
-                    : next;
+                finished = true;
+
+                execution.status = status;
+                execution.stdout = stdout;
+                execution.stderr =
+                    errorOutput !== undefined
+                        ? errorOutput
+                        : stderr;
+                execution.exitCode = exitCode;
+                execution.duration =
+                    Date.now() - startedAt;
+
+                await execution.save();
             };
 
             child.stdout.on(
@@ -115,35 +136,28 @@ export const runCommand = async (
             const timeout =
                 setTimeout(
                     async () => {
+                        if (finished) {
+                            return;
+                        }
+
                         child.kill();
 
-                        execution.status =
-                            "FAILED";
-
-                        execution.stdout =
-                            stdout;
-
-                        execution.stderr =
+                        const timeoutError =
                             stderr +
                             "\nDocker command timed out.";
 
-                        execution.exitCode =
-                            null;
-
-                        execution.duration =
-                            Date.now() -
-                            startedAt;
-
                         try {
-                            await execution.save();
+                            await finish(
+                                "FAILED",
+                                null,
+                                timeoutError
+                            );
 
                             resolve({
                                 success: false,
                                 exitCode: null,
                                 stdout,
-                                stderr:
-                                    stderr +
-                                    "\nDocker command timed out.",
+                                stderr: timeoutError,
                                 duration:
                                     Date.now() -
                                     startedAt
@@ -152,7 +166,7 @@ export const runCommand = async (
                             reject(error);
                         }
                     },
-                    COMMAND_TIMEOUT
+                    timeoutMs
                 );
 
             child.on(
@@ -160,24 +174,17 @@ export const runCommand = async (
                 async (error) => {
                     clearTimeout(timeout);
 
-                    execution.status =
-                        "FAILED";
-
-                    execution.stdout =
-                        stdout;
-
-                    execution.stderr =
-                        error.message;
-
-                    execution.exitCode =
-                        null;
-
-                    execution.duration =
-                        Date.now() -
-                        startedAt;
+                    if (finished) {
+                        return;
+                    }
 
                     try {
-                        await execution.save();
+                        await finish(
+                            "FAILED",
+                            null,
+                            error.message
+                        );
+
                         reject(error);
                     } catch (saveError) {
                         reject(saveError);
@@ -190,29 +197,20 @@ export const runCommand = async (
                 async (code) => {
                     clearTimeout(timeout);
 
+                    if (finished) {
+                        return;
+                    }
+
                     const success =
                         code === 0;
 
-                    execution.status =
-                        success
-                            ? "COMPLETED"
-                            : "FAILED";
-
-                    execution.stdout =
-                        stdout;
-
-                    execution.stderr =
-                        stderr;
-
-                    execution.exitCode =
-                        code;
-
-                    execution.duration =
-                        Date.now() -
-                        startedAt;
-
                     try {
-                        await execution.save();
+                        await finish(
+                            success
+                                ? "COMPLETED"
+                                : "FAILED",
+                            code
+                        );
 
                         resolve({
                             success,
@@ -229,5 +227,64 @@ export const runCommand = async (
                 }
             );
         }
+    );
+};
+
+export const installDependencies = async (
+    runId: string,
+    workingDirectory: string
+) => {
+    return await runDockerCommand(
+        runId,
+        "npm ci --ignore-scripts --prefix server",
+        workingDirectory,
+        "bridge",
+        INSTALL_TIMEOUT
+    );
+};
+
+export const runCommand = async (
+    runId: string,
+    command: string,
+    workingDirectory: string
+) => {
+    const normalizedCommand =
+        command.trim();
+
+    if (!allowedCommands.includes(normalizedCommand)) {
+        throw new Error("Command is not allowed");
+    }
+
+    if (
+        normalizedCommand ===
+            "npm test --prefix server" ||
+        normalizedCommand ===
+            "npm run build --prefix server"
+    ) {
+        const installResult =
+            await installDependencies(
+                runId,
+                workingDirectory
+            );
+
+        if (!installResult.success) {
+            return {
+                success: false,
+                exitCode: installResult.exitCode,
+                stdout: installResult.stdout,
+                stderr:
+                    "Dependency installation failed.\n" +
+                    installResult.stderr,
+                duration: installResult.duration
+            };
+        }
+    }
+
+    return await runDockerCommand(
+        runId,
+        normalizedCommand,
+        workingDirectory,
+        "none",
+        COMMAND_TIMEOUT
     );
 };
