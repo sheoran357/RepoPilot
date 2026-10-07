@@ -6,6 +6,14 @@ import {
     validateWorkspace
 } from "./workspaceService.js";
 
+interface ExecutionResult {
+    success: boolean;
+    exitCode: number | null;
+    stdout: string;
+    stderr: string;
+    duration: number;
+}
+
 const COMMAND_TIMEOUT = 30_000;
 const INSTALL_TIMEOUT = 300_000;
 const MAX_OUTPUT_LENGTH = 20_000;
@@ -36,7 +44,7 @@ const runDockerCommand = async (
     workingDirectory: string,
     network: "none" | "bridge",
     timeoutMs: number
-) => {
+): Promise<ExecutionResult> => {
     const safeWorkingDirectory =
         validateWorkspace(workingDirectory);
 
@@ -49,7 +57,7 @@ const runDockerCommand = async (
 
     const startedAt = Date.now();
 
-    return await new Promise(
+    return await new Promise<ExecutionResult>(
         (resolve, reject) => {
             const parts =
                 command.split(/\s+/);
@@ -233,7 +241,7 @@ const runDockerCommand = async (
 export const installDependencies = async (
     runId: string,
     workingDirectory: string
-) => {
+): Promise<ExecutionResult> => {
     return await runDockerCommand(
         runId,
         "npm ci --ignore-scripts --prefix server",
