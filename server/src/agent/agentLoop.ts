@@ -23,6 +23,7 @@ interface AgentLoopInput {
 }
 
 const MAX_STEPS = 8;
+
 const allowedTools = [
     "search_code",
     "get_file",
@@ -58,15 +59,10 @@ export const runAgentLoop = async (
     agent: Agent,
     input: AgentLoopInput
 ) => {
-
     const state = agent.getState();
 
     try {
-
-        // -----------------------------
         // Create initial plan
-        // -----------------------------
-
         const plan = await createPlan(
             state.goal
         );
@@ -77,14 +73,10 @@ export const runAgentLoop = async (
             "Initial investigation plan created."
         );
 
-        // -----------------------------
         // Agent loop
-        // -----------------------------
-
         while (
             state.currentStep < MAX_STEPS
         ) {
-
             const decision =
                 await getNextAction({
                     goal: state.goal,
@@ -98,14 +90,10 @@ export const runAgentLoop = async (
                         state.toolHistory
                 });
 
-            // -----------------------------
             // Finish
-            // -----------------------------
-
             if (
                 decision.action === "finish"
             ) {
-
                 const hasCodingTool =
                     state.toolHistory.some(
                         (history) =>
@@ -134,10 +122,7 @@ export const runAgentLoop = async (
                 break;
             }
 
-            // -----------------------------
             // Validate tool
-            // -----------------------------
-
             if (!decision.toolName) {
                 throw new Error(
                     "LLM did not provide a tool"
@@ -160,10 +145,7 @@ export const runAgentLoop = async (
                 );
             }
 
-            // -----------------------------
             // Prevent repeated tool calls
-            // -----------------------------
-
             const previousCalls =
                 state.toolHistory.filter(
                     (history) =>
@@ -174,7 +156,6 @@ export const runAgentLoop = async (
                 );
 
             if (previousCalls.length > 0) {
-
                 agent.addObservation(
                     `The tool ${decision.toolName} with the same input was already executed. Choose a different useful action.`
                 );
@@ -182,10 +163,7 @@ export const runAgentLoop = async (
                 continue;
             }
 
-            // -----------------------------
             // Update step
-            // -----------------------------
-
             agent.updateStep();
 
             console.log(
@@ -202,37 +180,23 @@ export const runAgentLoop = async (
                 decision.input
             );
 
-            // -----------------------------
             // Create AgentStep
-            // -----------------------------
-
             const step =
                 await startAgentStep(
                     state.runId,
-
                     state.currentStep,
-
                     decision.reason,
-
                     decision.toolName,
-
                     decision.input
                 );
 
             try {
-
-                // -----------------------------
                 // Execute tool
-                // -----------------------------
-
                 const result =
                     await runTool(
                         state.runId,
-
                         decision.toolName,
-
                         decision.input,
-
                         {
                             ...input,
                             workingDirectory:
@@ -241,22 +205,14 @@ export const runAgentLoop = async (
                         }
                     );
 
-                // -----------------------------
                 // Save tool history
-                // -----------------------------
-
                 agent.addToolHistory(
                     decision.toolName,
-
                     decision.input,
-
                     result
                 );
 
-                // -----------------------------
                 // Save useful observation
-                // -----------------------------
-
                 const resultText =
                     typeof result === "string"
                         ? result
@@ -266,26 +222,20 @@ export const runAgentLoop = async (
                     `Tool ${decision.toolName} executed successfully. Result: ${resultText}`
                 );
 
-                // -----------------------------
                 // Complete step
-                // -----------------------------
-
                 await completeAgentStep(
                     step,
                     result
                 );
 
-                // -----------------------------
-                // Finish successful command tasks
-                // -----------------------------
-
+                // A successful command completes the run.
+                // Do not ask the LLM for another command.
                 if (
                     decision.toolName === "run_command" &&
-                    result?.success === true &&
-                    !requiresCodeChange(state.goal)
+                    result?.success === true
                 ) {
                     agent.addObservation(
-                        "The requested command completed successfully. No code change is required, so the agent run is complete."
+                        "The requested command completed successfully. The agent run is complete."
                     );
 
                     agent.complete();
@@ -293,15 +243,11 @@ export const runAgentLoop = async (
                     break;
                 }
 
-                // -----------------------------
                 // Last-step protection
-                // -----------------------------
-
                 if (
                     state.currentStep >=
                     MAX_STEPS
                 ) {
-
                     const hasCodingTool =
                         state.toolHistory.some(
                             (history) =>
@@ -329,7 +275,6 @@ export const runAgentLoop = async (
                 }
 
             } catch (error) {
-
                 await failAgentStep(
                     step,
                     error
@@ -339,22 +284,17 @@ export const runAgentLoop = async (
             }
         }
 
-        // -----------------------------
         // Safety check
-        // -----------------------------
-
         if (
             state.status !== "COMPLETED" &&
             state.currentStep >= MAX_STEPS
         ) {
-
             agent.complete();
         }
 
         return state;
 
     } catch (error) {
-
         agent.fail();
 
         throw error;
