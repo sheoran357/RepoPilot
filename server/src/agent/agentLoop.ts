@@ -74,6 +74,8 @@ export const runAgentLoop = async (
         );
 
         // Agent loop
+        let repeatedActionCount = 0;
+
         while (
             state.currentStep < MAX_STEPS
         ) {
@@ -156,12 +158,22 @@ export const runAgentLoop = async (
                 );
 
             if (previousCalls.length > 0) {
+                repeatedActionCount++;
+
                 agent.addObservation(
                     `The tool ${decision.toolName} with the same input was already executed. Choose a different useful action.`
                 );
 
+                if (repeatedActionCount >= 2) {
+                    throw new Error(
+                        `Agent repeatedly selected the same tool and input: ${decision.toolName}`
+                    );
+                }
+
                 continue;
             }
+
+            repeatedActionCount = 0;
 
             // Update step
             agent.updateStep();
@@ -218,8 +230,15 @@ export const runAgentLoop = async (
                         ? result
                         : JSON.stringify(result);
 
+                const observationMessage =
+                    result?.success === false
+                        ? `Tool ${decision.toolName} reported failure. Use the returned output to decide whether to diagnose or stop. Result: ${resultText}`
+                        : result?.success === true
+                            ? `Tool ${decision.toolName} executed successfully. Result: ${resultText}`
+                            : `Tool ${decision.toolName} completed and returned a result. Result: ${resultText}`;
+
                 agent.addObservation(
-                    `Tool ${decision.toolName} executed successfully. Result: ${resultText}`
+                    observationMessage
                 );
 
                 // Complete step

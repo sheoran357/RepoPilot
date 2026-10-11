@@ -32,7 +32,6 @@ export interface PlannerDecision {
 
 
 const parseJSON = (text: string) => {
-
     const cleanedText = text
         .trim()
         .replace(/^\`\`\`json\s*/i, "")
@@ -41,15 +40,82 @@ const parseJSON = (text: string) => {
         .trim();
 
     try {
-
         return JSON.parse(cleanedText);
-
     } catch {
+        // Some model gateways append a second, partial JSON response.
+        // Recover the first complete JSON object instead of failing on
+        // otherwise usable output.
+        const objectStart = cleanedText.indexOf("{");
+
+        if (objectStart >= 0) {
+            let depth = 0;
+            let inString = false;
+            let escaped = false;
+
+            for (
+                let index = objectStart;
+                index < cleanedText.length;
+                index++
+            ) {
+                const character = cleanedText[index];
+
+                if (inString) {
+                    if (escaped) {
+                        escaped = false;
+                    } else if (character === "\\") {
+                        escaped = true;
+                    } else if (character === "\"") {
+                        inString = false;
+                    }
+
+                    continue;
+                }
+
+                if (character === "\"") {
+                    inString = true;
+                    continue;
+                }
+
+                if (character === "{") {
+                    depth++;
+                    continue;
+                }
+
+                if (character === "}") {
+                    depth--;
+
+                    if (depth === 0) {
+                        const firstObject =
+                            cleanedText.slice(
+                                objectStart,
+                                index + 1
+                            );
+
+                        try {
+                            const parsed =
+                                JSON.parse(firstObject);
+
+                            if (
+                                index + 1 <
+                                cleanedText.length
+                            ) {
+                                console.warn(
+                                    "LLM response contained trailing content; using the first complete JSON object."
+                                );
+                            }
+
+                            return parsed;
+                        } catch {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
 
         console.error(
             "Invalid JSON returned by LLM:"
         );
-
         console.error(text);
 
         throw new Error(
