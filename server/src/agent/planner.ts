@@ -182,9 +182,25 @@ Available tools:
 7. run_command
 - Runs an allowed development command inside the managed execution workspace.
 - Use this when the task explicitly requires running a command.
-- Requires:
+- The execution workspace is already the repository root.
+- Never use cd, &&, ||, ;, |, >, >>, or other shell operators.
+- Never prefix commands with "cd server" or similar directory changes.
+- Do not add "2>&1" or other shell redirection.
+- For server build tasks, use exactly:
+  {
+    "command": "npm run build --prefix server"
+  }
+- For server test tasks, use exactly:
+  {
+    "command": "npm test --prefix server"
+  }
+- For checking Node version, use:
   {
     "command": "node --version"
+  }
+- For checking npm version, use:
+  {
+    "command": "npm --version"
   }
 - Only use commands supported by the available tool definition.
 
@@ -480,6 +496,16 @@ use search_code.
 
 If a code change is required, you MUST use edit_file,
 create_file, or delete_file as appropriate.
+
+When using run_command:
+
+- The execution workspace is already the repository root.
+- Never use cd.
+- Never use &&, ||, ;, |, >, >>, or shell redirection.
+- For a server build, use exactly:
+  "npm run build --prefix server"
+- For server tests, use exactly:
+  "npm test --prefix server"
 
 Do not finish before proposing the required code change.
 

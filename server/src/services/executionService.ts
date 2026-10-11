@@ -1,4 +1,6 @@
+
 import { spawn } from "child_process";
+import { randomUUID } from "crypto";
 import path from "path";
 import Execution from "../models/Execution.js";
 
@@ -14,7 +16,7 @@ interface ExecutionResult {
     duration: number;
 }
 
-const COMMAND_TIMEOUT = 30_000;
+const COMMAND_TIMEOUT = 120_000;
 const INSTALL_TIMEOUT = 300_000;
 const MAX_OUTPUT_LENGTH = 20_000;
 const DOCKER_IMAGE = "node:22-alpine";
@@ -36,6 +38,44 @@ const appendOutput = (
     return next.length > MAX_OUTPUT_LENGTH
         ? next.slice(0, MAX_OUTPUT_LENGTH)
         : next;
+};
+
+/**
+ * Forcefully stops and removes a named Docker container.
+ * Resolves even if the container has already stopped or been removed.
+ */
+const removeDockerContainer = (
+    containerName: string
+): Promise<void> => {
+    return new Promise<void>((resolve) => {
+        let settled = false;
+
+        const settle = () => {
+            if (settled) {
+                return;
+            }
+
+            settled = true;
+            resolve();
+        };
+
+        const cleanup = spawn(
+            "docker",
+            [
+                "rm",
+                "-f",
+                containerName
+            ],
+            {
+                shell: false,
+                windowsHide: true,
+                stdio: "ignore"
+            }
+        );
+
+        cleanup.on("error", settle);
+        cleanup.on("close", settle);
+    });
 };
 
 const runDockerCommand = async (
@@ -62,11 +102,20 @@ const runDockerCommand = async (
             const parts =
                 command.split(/\s+/);
 
+            const containerName =
+                `repopilot-${randomUUID()}`;
+
+            let stdout = "";
+            let stderr = "";
+            let finished = false;
+            let timingOut = false;
+
             const child = spawn(
                 "docker",
                 [
                     "run",
-                    "--rm",
+                    "--name",
+                    containerName,
                     "--network",
                     network,
                     "--cpus",
@@ -77,9 +126,12 @@ const runDockerCommand = async (
                     "128",
                     "--read-only",
                     "--tmpfs",
-                    "/tmp:rw,noexec,nosuid,size=64m",
+                    "/tmp:rw,noexec,nosuid,size=256m",
+                    "-e",
+                    "npm_config_cache=/tmp/npm-cache",
                     "-v",
-                    path.resolve(safeWorkingDirectory) + ":/workspace:rw",
+                    path.resolve(safeWorkingDirectory) +
+                        ":/workspace:rw",
                     "-w",
                     "/workspace",
                     DOCKER_IMAGE,
@@ -90,10 +142,6 @@ const runDockerCommand = async (
                     windowsHide: true
                 }
             );
-
-            let stdout = "";
-            let stderr = "";
-            let finished = false;
 
             const finish = async (
                 status: "COMPLETED" | "FAILED",
@@ -123,10 +171,7 @@ const runDockerCommand = async (
                 "data",
                 (data: Buffer) => {
                     stdout =
-                        appendOutput(
-                            stdout,
-                            data
-                        );
+                        appendOutput(stdout, data);
                 }
             );
 
@@ -134,59 +179,66 @@ const runDockerCommand = async (
                 "data",
                 (data: Buffer) => {
                     stderr =
-                        appendOutput(
-                            stderr,
-                            data
-                        );
+                        appendOutput(stderr, data);
                 }
             );
 
-            const timeout =
-                setTimeout(
-                    async () => {
-                        if (finished) {
-                            return;
-                        }
+            const timeout = setTimeout(
+                async () => {
+                    if (finished || timingOut) {
+                        return;
+                    }
 
-                        child.kill();
+                    timingOut = true;
 
-                        const timeoutError =
-                            stderr +
-                            "\nDocker command timed out.";
+                    // Stop the Docker CLI process.
+                    child.kill();
 
-                        try {
-                            await finish(
-                                "FAILED",
-                                null,
-                                timeoutError
-                            );
+                    const timeoutError =
+                        stderr +
+                        "\nDocker command timed out.";
 
-                            resolve({
-                                success: false,
-                                exitCode: null,
-                                stdout,
-                                stderr: timeoutError,
-                                duration:
-                                    Date.now() -
-                                    startedAt
-                            });
-                        } catch (error) {
-                            reject(error);
-                        }
-                    },
-                    timeoutMs
-                );
+                    try {
+                        // Also stop and remove the actual container.
+                        await removeDockerContainer(
+                            containerName
+                        );
+
+                        await finish(
+                            "FAILED",
+                            null,
+                            timeoutError
+                        );
+
+                        resolve({
+                            success: false,
+                            exitCode: null,
+                            stdout,
+                            stderr: timeoutError,
+                            duration:
+                                Date.now() - startedAt
+                        });
+                    } catch (error) {
+                        reject(error);
+                    }
+                },
+                timeoutMs
+            );
 
             child.on(
                 "error",
                 async (error) => {
                     clearTimeout(timeout);
 
-                    if (finished) {
+                    if (finished || timingOut) {
                         return;
                     }
 
                     try {
+                        await removeDockerContainer(
+                            containerName
+                        );
+
                         await finish(
                             "FAILED",
                             null,
@@ -205,7 +257,9 @@ const runDockerCommand = async (
                 async (code) => {
                     clearTimeout(timeout);
 
-                    if (finished) {
+                    // The timeout handler owns cleanup and recording
+                    // if the command has already timed out.
+                    if (finished || timingOut) {
                         return;
                     }
 
@@ -213,6 +267,12 @@ const runDockerCommand = async (
                         code === 0;
 
                     try {
+                        // Containers are explicitly removed after
+                        // normal completion as well as on timeout.
+                        await removeDockerContainer(
+                            containerName
+                        );
+
                         await finish(
                             success
                                 ? "COMPLETED"
@@ -226,8 +286,7 @@ const runDockerCommand = async (
                             stdout,
                             stderr,
                             duration:
-                                Date.now() -
-                                startedAt
+                                Date.now() - startedAt
                         });
                     } catch (error) {
                         reject(error);
