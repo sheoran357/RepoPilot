@@ -1,6 +1,7 @@
 
 import { spawn } from "child_process";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
+import { readFile, writeFile } from "fs/promises";
 import path from "path";
 import Execution from "../models/Execution.js";
 
@@ -16,7 +17,7 @@ interface ExecutionResult {
     duration: number;
 }
 
-const COMMAND_TIMEOUT = 120_000;
+const COMMAND_TIMEOUT = 180_000;
 const INSTALL_TIMEOUT = 300_000;
 const MAX_OUTPUT_LENGTH = 20_000;
 const DOCKER_IMAGE = "node:22-alpine";
@@ -119,16 +120,18 @@ const runDockerCommand = async (
                     "--network",
                     network,
                     "--cpus",
-                    "1",
+                    "2",
                     "--memory",
-                    "512m",
+                    "1g",
                     "--pids-limit",
-                    "128",
+                    "256",
                     "--read-only",
                     "--tmpfs",
                     "/tmp:rw,noexec,nosuid,size=256m",
                     "-e",
-                    "npm_config_cache=/tmp/npm-cache",
+                    "npm_config_cache=/npm-cache",
+                    "--mount",
+                    "type=volume,source=repopilot-npm-cache,target=/npm-cache",
                     "-v",
                     path.resolve(safeWorkingDirectory) +
                         ":/workspace:rw",
@@ -301,13 +304,75 @@ export const installDependencies = async (
     runId: string,
     workingDirectory: string
 ): Promise<ExecutionResult> => {
-    return await runDockerCommand(
-        runId,
-        "npm ci --ignore-scripts --prefix server",
-        workingDirectory,
-        "bridge",
-        INSTALL_TIMEOUT
-    );
+    const safeWorkingDirectory =
+        validateWorkspace(workingDirectory);
+
+    const lockFilePath =
+        path.resolve(
+            safeWorkingDirectory,
+            "server",
+            "package-lock.json"
+        );
+
+    const markerPath =
+        path.resolve(
+            safeWorkingDirectory,
+            "server",
+            "node_modules",
+            ".repopilot-dependencies-lock-sha256"
+        );
+
+    let lockHash: string | null = null;
+
+    try {
+        const lockFile =
+            await readFile(lockFilePath);
+
+        lockHash =
+            createHash("sha256")
+                .update(lockFile)
+                .digest("hex");
+
+        const installedHash =
+            await readFile(markerPath, "utf8");
+
+        if (installedHash.trim() === lockHash) {
+            return {
+                success: true,
+                exitCode: 0,
+                stdout:
+                    "Dependencies already installed; package-lock.json is unchanged.\n",
+                stderr: "",
+                duration: 0
+            };
+        }
+    } catch {
+        // A missing lockfile, marker, or node_modules directory
+        // means dependencies must be installed normally.
+    }
+
+    const result =
+        await runDockerCommand(
+            runId,
+            "npm ci --ignore-scripts --prefix server",
+            safeWorkingDirectory,
+            "bridge",
+            INSTALL_TIMEOUT
+        );
+
+    if (result.success && lockHash !== null) {
+        try {
+            await writeFile(
+                markerPath,
+                lockHash,
+                "utf8"
+            );
+        } catch {
+            // Caching is an optimization; do not fail a successful install.
+        }
+    }
+
+    return result;
 };
 
 export const runCommand = async (
