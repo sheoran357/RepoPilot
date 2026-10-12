@@ -88,7 +88,7 @@ export const githubCallback = async (
                 githubAccessToken: accessToken
             },
             {
-                new: true,
+                returnDocument: "after",
                 upsert: true
             }
         );

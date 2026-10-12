@@ -86,7 +86,7 @@ export const syncRepositoryIssues = async (
                         status: "PENDING"
                     },
                     {
-                        new: true,
+                        returnDocument: "after",
                         upsert: true
                     }
                 );

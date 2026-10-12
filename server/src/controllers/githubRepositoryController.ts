@@ -96,7 +96,7 @@ export const syncRepositories = async (
                             githubRepo.default_branch
                     },
                     {
-                        new: true,
+                        returnDocument: "after",
                         upsert: true
                     }
                 );
