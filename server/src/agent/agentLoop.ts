@@ -58,10 +58,10 @@ const requiresCodeChange = (goal: string) => {
 
 const isReadOnlyTask = (goal: string) => {
     return (
-        /\\bread[- ]only\\b/i.test(goal) ||
-        /\\b(?:do not|don't|never)\\b[\\s\\S]{0,100}\\b(?:modify|change|edit|create|delete|write|apply)\\b/i.test(goal) ||
-        /\\bwithout\\b[\\s\\S]{0,50}\\b(?:changes?|modifications?|edits?)\\b/i.test(goal) ||
-        /\\bno\\s+(?:file\\s+)?(?:changes?|modifications?|edits?)\\b/i.test(goal)
+        /\bread[- ]only\b/i.test(goal) ||
+        /\b(?:do not|don't|never)\b[\s\S]{0,100}\b(?:modify|change|edit|create|delete|write|apply)\b/i.test(goal) ||
+        /\bwithout\b[\s\S]{0,50}\b(?:changes?|modifications?|edits?)\b/i.test(goal) ||
+        /\bno\s+(?:file\s+)?(?:changes?|modifications?|edits?)\b/i.test(goal)
     );
 };
 
