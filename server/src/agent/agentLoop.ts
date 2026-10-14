@@ -12,7 +12,8 @@ import {
 
 import {
     createPlan,
-    getNextAction
+    getNextAction,
+    summarizeReadOnlyTask
 } from "./planner.js";
 
 interface AgentLoopInput {
@@ -85,7 +86,6 @@ export const runAgentLoop = async (
 
         // Agent loop
         let repeatedActionCount = 0;
-        let blockedReadOnlyActionCount = 0;
 
         while (
             state.currentStep < MAX_STEPS
@@ -158,24 +158,28 @@ export const runAgentLoop = async (
                 isReadOnlyTask(state.goal) &&
                 codingTools.includes(decision.toolName)
             ) {
-                blockedReadOnlyActionCount++;
-
                 agent.addObservation(
                     `Blocked ${decision.toolName}: this task is read-only, so no file changes are allowed.`
                 );
 
-                if (blockedReadOnlyActionCount >= 2) {
-                    agent.addObservation(
-                        "Stopped safely after the model repeatedly selected a coding tool for a read-only task."
-                    );
-                    agent.complete();
-                    break;
-                }
+                agent.addObservation(
+                    "Stopped tool selection safely after the model chose a coding tool for a read-only task. No coding tool was executed."
+                );
 
-                continue;
+                const finalSummary = await summarizeReadOnlyTask({
+                    goal: state.goal,
+                    plan: state.plan,
+                    observations: state.observations,
+                    toolHistory: state.toolHistory
+                });
+
+                agent.addObservation(
+                    `Final response:\n${finalSummary}`
+                );
+
+                agent.complete();
+                break;
             }
-
-            blockedReadOnlyActionCount = 0;
 
             if (!decision.input) {
                 throw new Error(
