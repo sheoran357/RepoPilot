@@ -55,6 +55,16 @@ const requiresCodeChange = (goal: string) => {
     );
 };
 
+
+const isReadOnlyTask = (goal: string) => {
+    return (
+        /\\bread[- ]only\\b/i.test(goal) ||
+        /\\b(?:do not|don't|never)\\b[\\s\\S]{0,100}\\b(?:modify|change|edit|create|delete|write|apply)\\b/i.test(goal) ||
+        /\\bwithout\\b[\\s\\S]{0,50}\\b(?:changes?|modifications?|edits?)\\b/i.test(goal) ||
+        /\\bno\\s+(?:file\\s+)?(?:changes?|modifications?|edits?)\\b/i.test(goal)
+    );
+};
+
 export const runAgentLoop = async (
     agent: Agent,
     input: AgentLoopInput
@@ -75,6 +85,7 @@ export const runAgentLoop = async (
 
         // Agent loop
         let repeatedActionCount = 0;
+        let blockedReadOnlyActionCount = 0;
 
         while (
             state.currentStep < MAX_STEPS
@@ -140,6 +151,31 @@ export const runAgentLoop = async (
                     `Tool not allowed: ${decision.toolName}`
                 );
             }
+
+            // Enforce read-only intent at the execution boundary. Prompt instructions
+            // alone are not sufficient to prevent a small local model from proposing edits.
+            if (
+                isReadOnlyTask(state.goal) &&
+                codingTools.includes(decision.toolName)
+            ) {
+                blockedReadOnlyActionCount++;
+
+                agent.addObservation(
+                    `Blocked ${decision.toolName}: this task is read-only, so no file changes are allowed.`
+                );
+
+                if (blockedReadOnlyActionCount >= 2) {
+                    agent.addObservation(
+                        "Stopped safely after the model repeatedly selected a coding tool for a read-only task."
+                    );
+                    agent.complete();
+                    break;
+                }
+
+                continue;
+            }
+
+            blockedReadOnlyActionCount = 0;
 
             if (!decision.input) {
                 throw new Error(
