@@ -243,14 +243,13 @@ const readOnlySummaryFallback = (input: PlannerInput): string => {
             introLines.push(cleanMarkdown(trimmed));
         }
 
-        if (introLines.join(" ").length >= 450) break;
     }
 
     const headings = lines
         .map((line) => line.match(/^#{2,3}\s+(.+)$/))
         .filter((match): match is RegExpMatchArray => Boolean(match))
         .map((match) => cleanMarkdown(match[1]))
-        .slice(0, 8);
+;
 
     const statusIndex = lines.findIndex((line) =>
         /^#{2,3}\s+(current status|status|current state)\b/i.test(line)
@@ -269,7 +268,7 @@ const readOnlySummaryFallback = (input: PlannerInput): string => {
         .filter((line) => /^\s*[-*+]\s+/.test(line))
         .map((line) => cleanMarkdown(line.replace(/^\s*[-*+]\s+/, "")))
         .filter(Boolean)
-        .slice(0, 6);
+;
 
     const sections: string[] = [
         `## Summary of ${title}`,
