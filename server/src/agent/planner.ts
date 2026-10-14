@@ -380,6 +380,11 @@ Remember: write the final answer now. Do not choose a tool.
             if (parsed && parsed.action === "tool") {
                 return readOnlySummaryFallback(input);
             }
+
+            // A successfully parsed but unrecognized JSON value (including
+            // arrays and generic objects) is not a user-facing summary.
+            // Fall back to the summary built from the actual file contents.
+            return readOnlySummaryFallback(input);
         } catch {
             // Plain Markdown is expected; parsing failure is not an error.
         }
