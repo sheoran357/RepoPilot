@@ -107,7 +107,7 @@ export const githubCallback = async (
         // Redirect user to React frontend
         const frontendUrl =
             process.env.FRONTEND_URL ||
-            "http://localhost:5173";
+            "http://localhost:5174";
 
         return res.redirect(
             `${frontendUrl}/auth/callback?token=${token}`

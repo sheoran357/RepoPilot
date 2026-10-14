@@ -23,6 +23,29 @@ interface Execution {
     duration?: number;
 }
 
+interface AgentRunResult {
+    runId?: string;
+    status?: string;
+    currentStep?: number;
+    observations?: string[];
+    toolHistory?: {
+        toolName: string;
+        input: unknown;
+        output: unknown;
+    }[];
+}
+
+const previewValue = (value: unknown, maxLength = 1000) => {
+    const text =
+        typeof value === "string"
+            ? value
+            : JSON.stringify(value, null, 2) ?? String(value);
+
+    return text.length > maxLength
+        ? `${text.slice(0, maxLength)}…`
+        : text;
+};
+
 const Dashboard = () => {
     const [user, setUser] =
         useState<User | null>(null);
@@ -50,6 +73,9 @@ const Dashboard = () => {
 
     const [execution, setExecution] =
         useState<Execution | null>(null);
+
+    const [agentResult, setAgentResult] =
+        useState<AgentRunResult | null>(null);
 
     const loadUser = async () => {
         try {
@@ -153,6 +179,7 @@ const Dashboard = () => {
 
         setRunning(true);
         setExecution(null);
+        setAgentResult(null);
         setMessage("Creating task and starting agent...");
 
         try {
@@ -179,21 +206,33 @@ const Dashboard = () => {
                     }
                 );
 
-            const runId =
-                runResponse.data.agentRun.runId;
+            const agentRun =
+                runResponse.data.agentRun as AgentRunResult;
 
-            const executionResponse =
-                await api.get(
-                    `/executions/runs/${runId}`
-                );
+            setAgentResult(agentRun || null);
+            setMessage("Agent run completed.");
 
-            setExecution(
-                executionResponse.data.execution
-            );
+            // Inspection-only tasks may not create an Execution record.
+            // A failure to load optional execution details should not turn a
+            // successful agent run into a failed task in the UI.
+            if (agentRun?.runId) {
+                try {
+                    const executionResponse =
+                        await api.get(
+                            `/executions/runs/${agentRun.runId}`
+                        );
 
-            setMessage(
-                "Agent run completed."
-            );
+                    setExecution(
+                        executionResponse.data.execution || null
+                    );
+                } catch (executionError) {
+                    console.warn(
+                        "Agent finished, but execution details could not be loaded:",
+                        executionError
+                    );
+                    setExecution(null);
+                }
+            }
         } catch (error: any) {
             console.error(
                 "Agent run failed:",
@@ -398,6 +437,82 @@ const Dashboard = () => {
                     </p>
                 )}
             </section>
+
+            {agentResult && (
+                <section
+                    style={{
+                        border: "1px solid #ddd",
+                        borderRadius: "8px",
+                        padding: "24px",
+                        marginBottom: "24px"
+                    }}
+                >
+                    <h2>Agent Result</h2>
+                    <p>
+                        <strong>Status:</strong>{" "}
+                        {agentResult.status || "Unknown"}
+                    </p>
+                    <p>
+                        <strong>Steps completed:</strong>{" "}
+                        {agentResult.currentStep ?? 0}
+                    </p>
+
+                    <h3>Observations</h3>
+                    {agentResult.observations?.length ? (
+                        <ol>
+                            {agentResult.observations.map(
+                                (observation, index) => (
+                                    <li
+                                        key={`observation-${index}`}
+                                        style={{ marginBottom: "12px" }}
+                                    >
+                                        <pre
+                                            style={{
+                                                whiteSpace: "pre-wrap",
+                                                overflowWrap: "anywhere",
+                                                margin: 0
+                                            }}
+                                        >
+                                            {previewValue(observation, 1500)}
+                                        </pre>
+                                    </li>
+                                )
+                            )}
+                        </ol>
+                    ) : (
+                        <p>No observations were returned.</p>
+                    )}
+
+                    <h3>Tool activity</h3>
+                    {agentResult.toolHistory?.length ? (
+                        <ol>
+                            {agentResult.toolHistory.map(
+                                (item, index) => (
+                                    <li
+                                        key={`tool-${index}`}
+                                        style={{ marginBottom: "12px" }}
+                                    >
+                                        <strong>{item.toolName}</strong>
+                                        <pre
+                                            style={{
+                                                whiteSpace: "pre-wrap",
+                                                overflowWrap: "anywhere"
+                                            }}
+                                        >
+                                            {previewValue({
+                                                input: item.input,
+                                                output: item.output
+                                            }, 1200)}
+                                        </pre>
+                                    </li>
+                                )
+                            )}
+                        </ol>
+                    ) : (
+                        <p>No tool calls were recorded.</p>
+                    )}
+                </section>
+            )}
 
             {execution && (
                 <section

@@ -12,7 +12,8 @@ import {
 
 import {
     createPlan,
-    getNextAction
+    getNextAction,
+    summarizeReadOnlyTask
 } from "./planner.js";
 
 interface AgentLoopInput {
@@ -52,6 +53,16 @@ const requiresCodeChange = (goal: string) => {
 
     return /\b(add|change|edit|modify|update|fix|create|delete|remove|implement|refactor|replace)\b/i.test(
         goal
+    );
+};
+
+
+const isReadOnlyTask = (goal: string) => {
+    return (
+        /\bread[- ]only\b/i.test(goal) ||
+        /\b(?:do not|don't|never)\b[\s\S]{0,100}\b(?:modify|change|edit|create|delete|write|apply)\b/i.test(goal) ||
+        /\bwithout\b[\s\S]{0,50}\b(?:changes?|modifications?|edits?)\b/i.test(goal) ||
+        /\bno\s+(?:file\s+)?(?:changes?|modifications?|edits?)\b/i.test(goal)
     );
 };
 
@@ -139,6 +150,35 @@ export const runAgentLoop = async (
                 throw new Error(
                     `Tool not allowed: ${decision.toolName}`
                 );
+            }
+
+            // Enforce read-only intent at the execution boundary. Prompt instructions
+            // alone are not sufficient to prevent a small local model from proposing edits.
+            if (
+                isReadOnlyTask(state.goal) &&
+                codingTools.includes(decision.toolName)
+            ) {
+                agent.addObservation(
+                    `Blocked ${decision.toolName}: this task is read-only, so no file changes are allowed.`
+                );
+
+                agent.addObservation(
+                    "Stopped tool selection safely after the model chose a coding tool for a read-only task. No coding tool was executed."
+                );
+
+                const finalSummary = await summarizeReadOnlyTask({
+                    goal: state.goal,
+                    plan: state.plan,
+                    observations: state.observations,
+                    toolHistory: state.toolHistory
+                });
+
+                agent.addObservation(
+                    `Final response:\n${finalSummary}`
+                );
+
+                agent.complete();
+                break;
             }
 
             if (!decision.input) {
