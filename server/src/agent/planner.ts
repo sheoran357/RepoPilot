@@ -160,6 +160,17 @@ const normalizeToolInput = (result: any) => {
     }
 
     result.input = input;
+
+    // Small local models may omit the explanatory reason even when their
+    // requested tool and arguments are usable. Keep the planner contract
+    // complete without allowing a missing reason to abort the run.
+    if (
+        typeof result.reason !== "string" ||
+        result.reason.trim() === ""
+    ) {
+        result.reason = `Use ${result.toolName} to continue the requested task.`;
+    }
+
     return result;
 };
 
