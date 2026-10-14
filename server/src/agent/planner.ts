@@ -125,6 +125,44 @@ const parseJSON = (text: string) => {
 };
 
 
+
+const normalizeToolInput = (result: any) => {
+    if (result.action !== "tool") {
+        return result;
+    }
+
+    const input =
+        result.input &&
+        typeof result.input === "object" &&
+        !Array.isArray(result.input)
+            ? { ...result.input }
+            : {};
+
+    const path = result.path ?? result.filePath;
+    const newContent = result.newContent ?? result.content;
+    const searchTerm = result.searchTerm ?? result.query;
+    const command = result.command;
+
+    if (input.path === undefined && path !== undefined) {
+        input.path = path;
+    }
+
+    if (input.newContent === undefined && newContent !== undefined) {
+        input.newContent = newContent;
+    }
+
+    if (input.searchTerm === undefined && searchTerm !== undefined) {
+        input.searchTerm = searchTerm;
+    }
+
+    if (input.command === undefined && command !== undefined) {
+        input.command = command;
+    }
+
+    result.input = input;
+    return result;
+};
+
 export const createPlan = async (
     goal: string
 ): Promise<string[]> => {
@@ -272,6 +310,8 @@ Available tools:
 
 Important rules:
 
+- If the task is explicitly read-only or says not to change files, NEVER choose edit_file, create_file, or delete_file.
+- When finishing, put the useful user-facing result in the finish action's "reason". For a summary task, provide the summary instead of a generic completion message.
 - Inspect the repository before changing code.
 - Use search_code when you need to locate relevant code.
 - Use get_file before editing an existing file.
@@ -614,7 +654,7 @@ Remember:
 
 
     const result =
-        parseJSON(response);
+        normalizeToolInput(parseJSON(response));
 
 
     // Gemini can occasionally return finish as a tool name.
@@ -714,12 +754,42 @@ Remember:
 
     if (
         result.action === "tool" &&
-        result.input === undefined
+        (!result.input ||
+            typeof result.input !== "object" ||
+            Array.isArray(result.input))
     ) {
-
         throw new Error(
-            "LLM did not provide tool input"
+            "LLM did not provide valid tool input"
         );
+    }
+
+    const requiredInputFields: Record<string, string[]> = {
+        search_code: ["searchTerm"],
+        get_file: ["path"],
+        edit_file: ["path", "newContent"],
+        create_file: ["path", "newContent"],
+        delete_file: ["path"],
+        run_command: ["command"]
+    };
+
+    if (result.action === "tool") {
+        const missingFields =
+            (requiredInputFields[result.toolName] || []).filter(
+                (field) => {
+                    const value = result.input[field];
+
+                    return (
+                        typeof value !== "string" ||
+                        (field !== "newContent" && value.trim() === "")
+                    );
+                }
+            );
+
+        if (missingFields.length > 0) {
+            throw new Error(
+                `LLM returned incomplete input for ${result.toolName}: ${missingFields.join(", ")}`
+            );
+        }
     }
 
 
