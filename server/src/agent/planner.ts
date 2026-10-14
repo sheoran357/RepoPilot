@@ -175,22 +175,125 @@ const normalizeToolInput = (result: any) => {
 };
 
 const readOnlySummaryFallback = (input: PlannerInput): string => {
-    const successfulReads = input.toolHistory
-        .filter((item) => item.toolName === "get_file")
-        .map((item) => {
-            const path = item.input?.path || "the requested file";
-            const output = item.output;
-            const failed = output?.success === false;
-            return failed
-                ? `Reading ${path} did not succeed. See Tool activity for the returned error.`
-                : `Read ${path}. The model repeatedly proposed prohibited file edits, so RepoPilot stopped safely. No coding tool was executed. The retrieved file content is available in Tool activity.`;
-        });
+    const latestRead = [...input.toolHistory]
+        .reverse()
+        .find((item) => item.toolName === "get_file");
 
-    if (successfulReads.length > 0) {
-        return successfulReads[successfulReads.length - 1];
+    if (!latestRead) {
+        return "RepoPilot stopped safely because the model selected a coding tool for a read-only task. No coding tool was executed. The available observations and tool activity are shown above.";
     }
 
-    return "RepoPilot stopped safely because the model selected a coding tool for a read-only task. No coding tool was executed. The available observations and tool activity are shown above.";
+    const path = latestRead.input?.path || "the requested file";
+    const output = latestRead.output;
+
+    if (output?.success === false) {
+        return `Reading ${path} did not succeed. See Tool activity for the returned error. No coding tool was executed.`;
+    }
+
+    let fileContent = "";
+
+    if (typeof output?.content === "string") {
+        fileContent = output.content;
+    } else if (typeof output === "string") {
+        try {
+            const parsed = JSON.parse(output);
+            fileContent = typeof parsed?.content === "string"
+                ? parsed.content
+                : output;
+        } catch {
+            fileContent = output;
+        }
+    }
+
+    if (!fileContent.trim()) {
+        return `RepoPilot read ${path}, but could not extract its text for a summary. No coding tool was executed. See Tool activity for the returned result.`;
+    }
+
+    const lines = fileContent.split(/\r?\n/);
+    const cleanMarkdown = (text: string) => text
+        .replace(/^\s*>\s?/gm, "")
+        .replace(/^\s{0,3}#+\s*/, "")
+        .replace(/\*\*(.*?)\*\*/g, "$1")
+        .replace(/\*(.*?)\*/g, "$1")
+        .replace(/\x60([^\x60]+)\x60/g, "$1")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const titleLine = lines.find((line) => /^#\s+/.test(line));
+    const title = titleLine ? cleanMarkdown(titleLine) : path;
+
+    const introLines: string[] = [];
+    for (const line of lines) {
+        const trimmed = line.trim();
+
+        if (/^#\s+/.test(trimmed) && introLines.length === 0) {
+            continue;
+        }
+
+        if (/^[-*_]{3,}$/.test(trimmed)) {
+            if (introLines.length > 0) break;
+            continue;
+        }
+
+        if (/^#{1,6}\s+/.test(trimmed) && introLines.length > 0) {
+            break;
+        }
+
+        if (trimmed) {
+            introLines.push(cleanMarkdown(trimmed));
+        }
+
+        if (introLines.join(" ").length >= 450) break;
+    }
+
+    const headings = lines
+        .map((line) => line.match(/^#{2,3}\s+(.+)$/))
+        .filter((match): match is RegExpMatchArray => Boolean(match))
+        .map((match) => cleanMarkdown(match[1]))
+        .slice(0, 8);
+
+    const statusIndex = lines.findIndex((line) =>
+        /^#{2,3}\s+(current status|status|current state)\b/i.test(line)
+    );
+
+    const bulletSource = statusIndex >= 0
+        ? lines.slice(statusIndex + 1).slice(
+            0,
+            lines.slice(statusIndex + 1).findIndex((line) => /^#{1,3}\s+/.test(line)) < 0
+                ? undefined
+                : lines.slice(statusIndex + 1).findIndex((line) => /^#{1,3}\s+/.test(line))
+        )
+        : lines;
+
+    const bullets = bulletSource
+        .filter((line) => /^\s*[-*+]\s+/.test(line))
+        .map((line) => cleanMarkdown(line.replace(/^\s*[-*+]\s+/, "")))
+        .filter(Boolean)
+        .slice(0, 6);
+
+    const sections: string[] = [
+        `## Summary of ${title}`,
+        introLines.length
+            ? introLines.join(" ")
+            : `The file ${path} was read successfully.`
+    ];
+
+    if (bullets.length > 0) {
+        sections.push(
+            "**Key points listed in the file:**\n" +
+            bullets.map((bullet) => `- ${bullet}`).join("\n")
+        );
+    }
+
+    if (headings.length > 0) {
+        sections.push(`**Document sections:** ${headings.join(", ")}.`);
+    }
+
+    sections.push(
+        "The local model attempted a prohibited coding action, so RepoPilot stopped safely. No coding tool was executed."
+    );
+
+    return sections.join("\n\n");
 };
 
 
